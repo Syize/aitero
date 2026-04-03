@@ -26,6 +26,7 @@ export default function PDFCanvas() {
   const [numPages, setNumPages] = useState(0)
   const [pageHeights, setPageHeights] = useState<number[]>([])
   const [pageWidths, setPageWidths] = useState<number[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   const currentPageRef = useRef(1)
   const [visibleRange, setVisibleRange] = useState({ start: 1, end: 1 })
@@ -40,6 +41,7 @@ export default function PDFCanvas() {
     setNumPages(document.numPages)
 
     async function initialize() {
+      setIsLoading(true)
       const heights: number[] = []
       const widths: number[] = []
 
@@ -57,6 +59,8 @@ export default function PDFCanvas() {
         start: 1,
         end: Math.min(document!.numPages, 1 + PAGE_BUFFER_NUM)
       })
+
+      setIsLoading(false)
     }
 
     initialize()
@@ -249,44 +253,51 @@ export default function PDFCanvas() {
 
   return (
     <div ref={containerDiv} className="pdf-viewer relative w-full h-full overflow-auto">
-      <div className="flex flex-col items-center w-full">
-        {pages.map((pageIndex, i) => {
-          const height = pageHeights[i] || 800
-          const width = pageWidths[i] || 600
-          const visible = isInWindow(pageIndex)
+      {isLoading ? (
+        <div className="loading-overlay">
+          <div className="loading-spinner"></div>
+          <div>Loading PDF...</div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center w-full">
+          {pages.map((pageIndex, i) => {
+            const height = pageHeights[i]
+            const width = pageWidths[i]
+            const visible = isInWindow(pageIndex)
 
-          return (
-            <div
-              key={pageIndex}
-              className="pdf-page bg-white shadow"
-              data-page={pageIndex}
-              style={{
-                height,
-                width,
-                display: 'flex',
-                justifyContent: 'center'
-              }}
-            >
-              {visible ? (
-                <canvas ref={(el) => registerCanvas(pageIndex, el)} />
-              ) : (
-                <div
-                  style={{
-                    height: '100%',
-                    width: '100%',
-                    background: '#f3f4f6',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <div className="animate-pulse text-gray-400">Loading...</div>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+            return (
+              <div
+                key={pageIndex}
+                className="pdf-page bg-white shadow"
+                data-page={pageIndex}
+                style={{
+                  height,
+                  width,
+                  display: 'flex',
+                  justifyContent: 'center'
+                }}
+              >
+                {visible ? (
+                  <canvas ref={(el) => registerCanvas(pageIndex, el)} style={{ width, height }} />
+                ) : (
+                  <div
+                    style={{
+                      height: '100%',
+                      width: '100%',
+                      background: '#f3f4f6',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <div className="animate-pulse text-gray-400">Loading...</div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
