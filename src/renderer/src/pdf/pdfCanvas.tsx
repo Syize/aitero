@@ -259,7 +259,8 @@ export default function PDFCanvas() {
           <div>Loading PDF...</div>
         </div>
       ) : (
-        <div className="flex flex-col items-center w-full">
+        <div className="flex flex-col items-center w-full gap-4">
+          <div style={{ height: '50px', width: '100%' }} />
           {pages.map((pageIndex, i) => {
             const height = pageHeights[i]
             const width = pageWidths[i]

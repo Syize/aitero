@@ -2,14 +2,14 @@ import { floating_panel } from '@/components/css'
 import { Tooltip } from '@/components/toolTip'
 import clsx from 'clsx'
 import {
-	ChevronLeft,
-	ChevronRight,
-	Folder,
-	Layout,
-	RotateCcw,
-	RotateCw,
-	ZoomIn,
-	ZoomOut,
+  ChevronLeft,
+  ChevronRight,
+  Folder,
+  Layout,
+  RotateCcw,
+  RotateCw,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react'
 import { useRef } from 'react'
 import { useCanvasContext, usePDFContext } from './pdfState'
@@ -18,185 +18,179 @@ import { PDFManagerProps } from './utils'
 
 const toolbar_top = floating_panel + ' py-1! px-2!'
 const tool_button =
-	'-2 rounded-lg transition-all duration-200 ease-out hover:scale-105 hover:shadow-lg active:scale-95 focus:outline-none focus:ring-2 focus:ring-sage/50'
+  '-2 rounded-lg transition-all duration-200 ease-out hover:scale-105 hover:shadow-lg active:scale-95 focus:outline-none focus:ring-2 focus:ring-sage/50'
 
 const tool_button_no_active =
-	'bg-white/70 dark:bg-gray-800/70 text-charcoal dark:text-gray-200 hover:bg-white/90 dark:hover:bg-gray-700/90'
+  'bg-white/70 dark:bg-gray-800/70 text-charcoal dark:text-gray-200 hover:bg-white/90 dark:hover:bg-gray-700/90'
 
 export default function PDFToolBar({ manager }: PDFManagerProps) {
-	const {
-		state,
-		setCurrentPage,
-		setScale,
-		setRotation,
-		setIsLoading,
-		setDocument,
-	} = usePDFContext()
-	const fileInput = useRef<HTMLInputElement>(null)
-	const { setIsInitialized } = useCanvasContext()
+  const { state, setCurrentPage, setScale, setRotation, setIsLoading, setDocument } =
+    usePDFContext()
+  const fileInput = useRef<HTMLInputElement>(null)
+  const { setIsInitialized } = useCanvasContext()
 
-	// ====================== callback function ====================
-	function uploadFile() {
-		fileInput.current?.click()
-	}
+  // ====================== callback function ====================
+  function uploadFile() {
+    fileInput.current?.click()
+  }
 
-	async function onFileUpload(file: File) {
-		setIsLoading(true)
-		setIsInitialized(false)
-		let doc = await manager.loadFromFile(file)
-		setIsLoading(false)
-		setDocument(doc, 1, doc.numPages, 1.2, 0, false)
-	}
+  async function onFileUpload(file: File) {
+    setIsLoading(true)
+    setIsInitialized(false)
+    let doc = await manager.loadFromFile(file)
+    setIsLoading(false)
+    setDocument(doc, 1, doc.numPages, 1.2, 0, false)
+  }
 
-	function onRotateLeft() {
-		setRotation(((state.rotation - 90 + 360) % 360) as 0 | 90 | 180 | 270)
-	}
+  function onRotateLeft() {
+    setRotation(((state.rotation - 90 + 360) % 360) as 0 | 90 | 180 | 270)
+  }
 
-	function onRotateRight() {
-		setRotation(((state.rotation + 90) % 360) as 0 | 90 | 180 | 270)
-	}
+  function onRotateRight() {
+    setRotation(((state.rotation + 90) % 360) as 0 | 90 | 180 | 270)
+  }
 
-	// const handleFitToWidth = () => {
-	// 	if (!canvas.current || !state.document) return
+  // const handleFitToWidth = () => {
+  // 	if (!canvas.current || !state.document) return
 
-	// 	const containerWidth = canvas.current.parentElement?.clientWidth || 800
-	// 	const padding = 40
-	// 	const availableWidth = containerWidth - padding
+  // 	const containerWidth = canvas.current.parentElement?.clientWidth || 800
+  // 	const padding = 40
+  // 	const availableWidth = containerWidth - padding
 
-	// 	// 计算适合宽度的缩放比例
-	// 	const calculateScale = async () => {
-	// 		if (!state.document) return
-	// 		try {
-	// 			const page = await state.document.getPage(state.currentPage)
-	// 			const viewport = page.getViewport({
-	// 				scale: 1,
-	// 				rotation: state.rotation,
-	// 			})
+  // 	// 计算适合宽度的缩放比例
+  // 	const calculateScale = async () => {
+  // 		if (!state.document) return
+  // 		try {
+  // 			const page = await state.document.getPage(state.currentPage)
+  // 			const viewport = page.getViewport({
+  // 				scale: 1,
+  // 				rotation: state.rotation,
+  // 			})
 
-	// 			const newScale = availableWidth / viewport.width
-	// 			setScale(newScale)
-	// 		} catch (error) {
-	// 			console.error('Error calculating fit to width scale:', error)
-	// 		}
-	// 	}
+  // 			const newScale = availableWidth / viewport.width
+  // 			setScale(newScale)
+  // 		} catch (error) {
+  // 			console.error('Error calculating fit to width scale:', error)
+  // 		}
+  // 	}
 
-	// 	calculateScale()
-	// }
+  // 	calculateScale()
+  // }
 
-	return (
-		// <div className={clsx('toolbar-top left-4 right-4 z-50 fixed top-2')}>
-		// 	<div className="flex items-center justify-between">
-		// 		<div className="toolbar-section">
-		// 			<button
-		// 				onClick={() =>
-		// 					setCurrentPage(Math.max(1, state.currentPage - 1))
-		// 				}
-		// 				disabled={state.currentPage <= 1}
-		// 				className="toolbar-button"
-		// 			>
-		// 				上一页
-		// 			</button>
+  return (
+    // <div className={clsx('toolbar-top left-4 right-4 z-50 fixed top-2')}>
+    // 	<div className="flex items-center justify-between">
+    // 		<div className="toolbar-section">
+    // 			<button
+    // 				onClick={() =>
+    // 					setCurrentPage(Math.max(1, state.currentPage - 1))
+    // 				}
+    // 				disabled={state.currentPage <= 1}
+    // 				className="toolbar-button"
+    // 			>
+    // 				上一页
+    // 			</button>
 
-		// 			<span className="page-info">
-		// 				{state.currentPage} / {state.totalPages}
-		// 			</span>
+    // 			<span className="page-info">
+    // 				{state.currentPage} / {state.totalPages}
+    // 			</span>
 
-		// 			<button
-		// 				onClick={() =>
-		// 					setCurrentPage(
-		// 						Math.min(
-		// 							state.totalPages,
-		// 							state.currentPage + 1,
-		// 						),
-		// 					)
-		// 				}
-		// 				disabled={state.currentPage >= state.totalPages}
-		// 				className="toolbar-button"
-		// 			>
-		// 				下一页
-		// 			</button>
-		// 		</div>
+    // 			<button
+    // 				onClick={() =>
+    // 					setCurrentPage(
+    // 						Math.min(
+    // 							state.totalPages,
+    // 							state.currentPage + 1,
+    // 						),
+    // 					)
+    // 				}
+    // 				disabled={state.currentPage >= state.totalPages}
+    // 				className="toolbar-button"
+    // 			>
+    // 				下一页
+    // 			</button>
+    // 		</div>
 
-		// 		<div className="toolbar-section">
-		// 			<button
-		// 				onClick={() => setScale(Math.max(state.scale / 1.2, 5))}
-		// 				className="toolbar-button"
-		// 			>
-		// 				放大
-		// 			</button>
-		// 			<span className="scale-info">
-		// 				{Math.round(state.scale * 100)}%
-		// 			</span>
-		// 			<button
-		// 				onClick={() =>
-		// 					setScale(Math.max(state.scale / 1.2, 0.2))
-		// 				}
-		// 				className="toolbar-button"
-		// 			>
-		// 				缩小
-		// 			</button>
-		// 			<button
-		// 				onClick={handleFitToWidth}
-		// 				className="toolbar-button"
-		// 			>
-		// 				适应宽度
-		// 			</button>
-		// 		</div>
+    // 		<div className="toolbar-section">
+    // 			<button
+    // 				onClick={() => setScale(Math.max(state.scale / 1.2, 5))}
+    // 				className="toolbar-button"
+    // 			>
+    // 				放大
+    // 			</button>
+    // 			<span className="scale-info">
+    // 				{Math.round(state.scale * 100)}%
+    // 			</span>
+    // 			<button
+    // 				onClick={() =>
+    // 					setScale(Math.max(state.scale / 1.2, 0.2))
+    // 				}
+    // 				className="toolbar-button"
+    // 			>
+    // 				缩小
+    // 			</button>
+    // 			<button
+    // 				onClick={handleFitToWidth}
+    // 				className="toolbar-button"
+    // 			>
+    // 				适应宽度
+    // 			</button>
+    // 		</div>
 
-		// 		<div className="toolbar-section">
-		// 			<button
-		// 				onClick={() =>
-		// 					setRotation(
-		// 						((state.rotation - 90 + 360) % 360) as
-		// 							| 0
-		// 							| 90
-		// 							| 180
-		// 							| 270,
-		// 					)
-		// 				}
-		// 				className="toolbar-button"
-		// 			>
-		// 				左转
-		// 			</button>
-		// 			<button
-		// 				onClick={() =>
-		// 					setRotation(
-		// 						((state.rotation + 90) % 360) as
-		// 							| 0
-		// 							| 90
-		// 							| 180
-		// 							| 270,
-		// 					)
-		// 				}
-		// 				className="toolbar-button"
-		// 			>
-		// 				右转
-		// 			</button>
-		// 		</div>
-		// 	</div>
-		// </div>
-		<div
-			className={clsx(toolbar_top, 'left-4 right-4 z-50 absolute')}
-			// class:fixed={!$hasParityBanner}
-			// class:absolute={$hasParityBanner}
-			// class:top-2={!$hasParityBanner}
-		>
-			<input
-				ref={fileInput}
-				type="file"
-				accept=".pdf,.md,.markdown,.png,.jpg,.jpeg,.webp"
-				className="hidden"
-				aria-hidden="true"
-				onChange={(e) => {
-					let file = e.target.files?.[0]
-					if (file) onFileUpload(file)
-				}}
-			/>
+    // 		<div className="toolbar-section">
+    // 			<button
+    // 				onClick={() =>
+    // 					setRotation(
+    // 						((state.rotation - 90 + 360) % 360) as
+    // 							| 0
+    // 							| 90
+    // 							| 180
+    // 							| 270,
+    // 					)
+    // 				}
+    // 				className="toolbar-button"
+    // 			>
+    // 				左转
+    // 			</button>
+    // 			<button
+    // 				onClick={() =>
+    // 					setRotation(
+    // 						((state.rotation + 90) % 360) as
+    // 							| 0
+    // 							| 90
+    // 							| 180
+    // 							| 270,
+    // 					)
+    // 				}
+    // 				className="toolbar-button"
+    // 			>
+    // 				右转
+    // 			</button>
+    // 		</div>
+    // 	</div>
+    // </div>
+    <div
+      className={clsx(toolbar_top, 'left-4 right-4 z-50 absolute')}
+      // class:fixed={!$hasParityBanner}
+      // class:absolute={$hasParityBanner}
+      // class:top-2={!$hasParityBanner}
+    >
+      <input
+        ref={fileInput}
+        type="file"
+        accept=".pdf,.md,.markdown,.png,.jpg,.jpeg,.webp"
+        className="hidden"
+        aria-hidden="true"
+        onChange={(e) => {
+          let file = e.target.files?.[0]
+          if (file) onFileUpload(file)
+        }}
+      />
 
-			<div className={clsx(floating_panel, 'py-1! px-3!')}>
-				<div className="flex items-center justify-between">
-					<div className="flex items-center space-x-2">
-						{/* <Tooltip content="Go to homepage">
+      <div className={clsx(floating_panel, 'py-1! px-3!')}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            {/* <Tooltip content="Go to homepage">
 					<button
 						className="flex items-center hover:opacity-80 transition-opacity cursor-pointer w-11 h-11 lg:w-8 lg:h-8 justify-center"
 						on:click={handleLogoClick}
@@ -206,116 +200,107 @@ export default function PDFToolBar({ manager }: PDFManagerProps) {
 					</button>
 				</Tooltip> */}
 
-						<div className="h-4 w-px bg-charcoal/20"></div>
+            <div className="h-4 w-px bg-charcoal/20"></div>
 
-						<div className="hidden lg:block">
-							<Tooltip content="Upload PDF (U)">
-								<button
-									className={clsx(
-										'w-8 h-8 flex items-center justify-center',
-										tool_button,
-										tool_button_no_active,
-									)}
-									onClick={uploadFile}
-									aria-label="Upload PDF"
-								>
-									<Folder size={14} />
-								</button>
-							</Tooltip>
-						</div>
+            <div className="hidden lg:block">
+              <Tooltip content="Upload PDF (U)">
+                <button
+                  className={clsx(
+                    'w-8 h-8 flex items-center justify-center',
+                    tool_button,
+                    tool_button_no_active
+                  )}
+                  onClick={uploadFile}
+                  aria-label="Upload PDF"
+                >
+                  <Folder size={14} />
+                </button>
+              </Tooltip>
+            </div>
 
-						<div className="hidden lg:flex items-center space-x-2">
-							<Tooltip content="Previous page (←)">
-								<button
-									className={clsx(
-										'w-8 h-8 flex items-center justify-center',
-										tool_button,
-										tool_button_no_active,
-										state.currentPage <= 1 && 'opacity-50',
-									)}
-									disabled={state.currentPage <= 1}
-									onClick={() => {
-										setCurrentPage(state.currentPage - 1)
-									}}
-									aria-label="Previous page"
-								>
-									<ChevronLeft size={14} />
-								</button>
-							</Tooltip>
+            <div className="hidden lg:flex items-center space-x-2">
+              <Tooltip content="Previous page (←)">
+                <button
+                  className={clsx(
+                    'w-8 h-8 flex items-center justify-center',
+                    tool_button,
+                    tool_button_no_active,
+                    state.currentPage <= 1 && 'opacity-50'
+                  )}
+                  disabled={state.currentPage <= 1}
+                  onClick={() => {
+                    setCurrentPage(state.currentPage - 1)
+                  }}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+              </Tooltip>
 
-							<Tooltip content="Next page (→)">
-								<button
-									className={clsx(
-										'w-8 h-8 flex items-center justify-center',
-										tool_button,
-										tool_button_no_active,
-										state.currentPage >= state.totalPages &&
-											'opacity-50',
-									)}
-									disabled={
-										state.currentPage >= state.totalPages
-									}
-									onClick={() => {
-										setCurrentPage(state.currentPage + 1)
-									}}
-									aria-label="Next page"
-								>
-									<ChevronRight size={14} />
-								</button>
-							</Tooltip>
+              <Tooltip content="Next page (→)">
+                <button
+                  className={clsx(
+                    'w-8 h-8 flex items-center justify-center',
+                    tool_button,
+                    tool_button_no_active,
+                    state.currentPage >= state.totalPages && 'opacity-50'
+                  )}
+                  disabled={state.currentPage >= state.totalPages}
+                  onClick={() => {
+                    setCurrentPage(state.currentPage + 1)
+                  }}
+                  aria-label="Next page"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </Tooltip>
 
-							<Tooltip content="Page Thumbnails (T)">
-								<button
-									className={clsx(
-										'w-8 h-8 flex items-center justify-center',
-										tool_button,
-										tool_button_no_active,
-									)}
-									// class:active={showThumbnails}
-									// on:click={() => onToggleThumbnails(!showThumbnails)}
-									aria-label="Toggle page thumbnails"
-								>
-									<Layout size={14} />
-								</button>
-							</Tooltip>
-						</div>
+              <Tooltip content="Page Thumbnails (T)">
+                <button
+                  className={clsx(
+                    'w-8 h-8 flex items-center justify-center',
+                    tool_button,
+                    tool_button_no_active
+                  )}
+                  // class:active={showThumbnails}
+                  // on:click={() => onToggleThumbnails(!showThumbnails)}
+                  aria-label="Toggle page thumbnails"
+                >
+                  <Layout size={14} />
+                </button>
+              </Tooltip>
+            </div>
 
-						<div className="hidden lg:flex items-center space-x-2">
-							<Tooltip content="Zoom in (Ctrl++)">
-								<button
-									className={clsx(
-										'h-8 w-8 flex items-center justify-center',
-										tool_button,
-										tool_button_no_active,
-									)}
-									onClick={() =>
-										setScale(Math.min(state.scale * 1.2, 5))
-									}
-									aria-label="Zoom in"
-								>
-									<ZoomIn size={18} />
-								</button>
-							</Tooltip>
+            <div className="hidden lg:flex items-center space-x-2">
+              <Tooltip content="Zoom in (Ctrl++)">
+                <button
+                  className={clsx(
+                    'h-8 w-8 flex items-center justify-center',
+                    tool_button,
+                    tool_button_no_active
+                  )}
+                  onClick={() => setScale(Math.min(state.scale * 1.2, 5))}
+                  aria-label="Zoom in"
+                >
+                  <ZoomIn size={18} />
+                </button>
+              </Tooltip>
 
-							<Tooltip content="Zoom out (Ctrl+-)">
-								<button
-									className={clsx(
-										'h-8 w-8 flex items-center justify-center',
-										tool_button,
-										tool_button_no_active,
-									)}
-									onClick={() =>
-										setScale(
-											Math.max(state.scale / 1.2, 0.2),
-										)
-									}
-									aria-label="Zoom out"
-								>
-									<ZoomOut size={18} />
-								</button>
-							</Tooltip>
+              <Tooltip content="Zoom out (Ctrl+-)">
+                <button
+                  className={clsx(
+                    'h-8 w-8 flex items-center justify-center',
+                    tool_button,
+                    tool_button_no_active
+                  )}
+                  onClick={() => setScale(Math.max(state.scale / 1.2, 0.2))}
+                  aria-label="Zoom out"
+                >
+                  <ZoomOut size={18} />
+                </button>
+              </Tooltip>
 
-							{/* <div className="relative">
+              {/* <div className="relative">
 						<Tooltip content="View options (Reset, Fit)">
 							<button
 								className="tool-button h-8 w-8 flex items-center justify-center"
@@ -364,46 +349,46 @@ export default function PDFToolBar({ manager }: PDFManagerProps) {
 							</div>
 						{/if}
 					</div> */}
-						</div>
+            </div>
 
-						<div className="hidden lg:flex items-center space-x-2">
-							<div className="w-px h-4 bg-gray-200 dark:bg-gray-600 mx-1"></div>
+            <div className="hidden lg:flex items-center space-x-2">
+              <div className="w-px h-4 bg-gray-200 dark:bg-gray-600 mx-1"></div>
 
-							<Tooltip content="Rotate left 90° (Shift+R)">
-								<button
-									className={clsx(
-										'w-8 h-8 flex items-center justify-center',
-										tool_button,
-										tool_button_no_active,
-										!state.document && 'opacity-50',
-									)}
-									disabled={!state.document}
-									onClick={onRotateLeft}
-									aria-label="Rotate page left 90 degrees"
-								>
-									<RotateCcw size={14} />
-								</button>
-							</Tooltip>
+              <Tooltip content="Rotate left 90° (Shift+R)">
+                <button
+                  className={clsx(
+                    'w-8 h-8 flex items-center justify-center',
+                    tool_button,
+                    tool_button_no_active,
+                    !state.document && 'opacity-50'
+                  )}
+                  disabled={!state.document}
+                  onClick={onRotateLeft}
+                  aria-label="Rotate page left 90 degrees"
+                >
+                  <RotateCcw size={14} />
+                </button>
+              </Tooltip>
 
-							<Tooltip content="Rotate right 90° (R)">
-								<button
-									className={clsx(
-										'w-8 h-8 flex items-center justify-center',
-										tool_button,
-										tool_button_no_active,
-										!state.document && 'opacity-50',
-									)}
-									disabled={!state.document}
-									onClick={onRotateRight}
-									aria-label="Rotate page right 90 degrees"
-								>
-									<RotateCw size={14} />
-								</button>
-							</Tooltip>
-						</div>
-					</div>
+              <Tooltip content="Rotate right 90° (R)">
+                <button
+                  className={clsx(
+                    'w-8 h-8 flex items-center justify-center',
+                    tool_button,
+                    tool_button_no_active,
+                    !state.document && 'opacity-50'
+                  )}
+                  disabled={!state.document}
+                  onClick={onRotateRight}
+                  aria-label="Rotate page right 90 degrees"
+                >
+                  <RotateCw size={14} />
+                </button>
+              </Tooltip>
+            </div>
+          </div>
 
-					{/* <div className="hidden lg:flex items-center space-x-2" class:opacity-50={viewOnlyMode}>
+          {/* <div className="hidden lg:flex items-center space-x-2" class:opacity-50={viewOnlyMode}>
 				<Tooltip content={viewOnlyMode ? 'Drawing disabled in view-only mode' : 'Pencil (1)'}>
 					<button
 						className="tool-button w-8 h-8 flex items-center justify-center"
@@ -810,7 +795,7 @@ export default function PDFToolBar({ manager }: PDFManagerProps) {
 				{/if}
 			</div> */}
 
-					{/* <div className="flex items-center space-x-2">
+          {/* <div className="flex items-center space-x-2">
 				<div className="flex items-center space-x-2">
 					<Tooltip content={viewOnlyMode ? 'Undo disabled in view-only mode' : 'Undo (Ctrl+Z)'}>
 						<button
@@ -1293,8 +1278,8 @@ export default function PDFToolBar({ manager }: PDFManagerProps) {
 					{/if}
 				</div>
 			</div> */}
-				</div>
-			</div>
-		</div>
-	)
+        </div>
+      </div>
+    </div>
+  )
 }
