@@ -59,3 +59,10 @@
 :global(.dark) .pdf-viewer {
   background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
 }
+
+.pdf-page {
+  transition: transform 0.1s ease-out;
+  transform-origin: top center;
+  display: 'flex';
+  justify-content: 'center';
+}

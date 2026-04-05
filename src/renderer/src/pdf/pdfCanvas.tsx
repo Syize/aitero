@@ -1,76 +1,285 @@
 // TODO:
-//   1. Review the code.
-//   2. Fix the issue that page won't be rendered when scroll too fast.
-//   3. Fix the issue that performence bad in tauri.
-//   4. Possible solution for #2: Add render queue.
+//   1. Fix the bug that can't scale properly.
+//   2. Fix the bug that can't scale continuously.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './pdfCanvas.css'
 import { usePDFContext } from './pdfState'
 
-const PAGE_BUFFER_NUM = 6
-const RENDER_BUFFER_NUM = 2
-const MAX_RENDER_NUM = 2
+const RENDER_BUFFER_NUM = 3
 
 export default function PDFCanvas() {
-  const { state } = usePDFContext()
-  // const { canvasState, setPanelOffset, setIsInitialized } = useCanvasContext()
-  const { scale, rotation, document } = state
+  const { state, setScale } = usePDFContext()
+
+  const { scale, rotation, document: pdfDocument } = state
   const containerDiv = useRef<HTMLDivElement>(null)
   const observerRef = useRef<IntersectionObserver | null>(null)
   const canvasMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
+  const offscreenMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
 
   const renderedPages = useRef<Set<number>>(new Set())
   const renderingPages = useRef<Set<number>>(new Set())
   const renderTasks = useRef<Map<number, any>>(new Map())
 
+  const scaleTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const mountTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Page numbers of PDF document
   const [numPages, setNumPages] = useState(0)
   const [pageHeights, setPageHeights] = useState<number[]>([])
   const [pageWidths, setPageWidths] = useState<number[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
+  // Scale of the on screen canvas
+  const [tempScale, setTempScale] = useState(scale)
+
   const currentPageRef = useRef(1)
-  const [visibleRange, setVisibleRange] = useState({ start: 1, end: 1 })
+
+  // Mounted canvas index.
+  const [tempMountedPages, setTempMountedPages] = useState<Set<number>>(new Set())
+  const [mountedPages, setMountedPages] = useState<Set<number>>(new Set())
+
+  const [isAnimationFrame, setIsAnimationFrame] = useState(false)
 
   let active = 0
+
+  // =========================== Utility functions =================================
+
+  function cancelRender(pageIndex: number) {
+    const t = renderTasks.current.get(pageIndex)
+    if (t) {
+      try {
+        t.cancel()
+      } catch {}
+      renderTasks.current.delete(pageIndex)
+      renderingPages.current.delete(pageIndex)
+    }
+  }
+
+  function calculatePageSize() {
+    const heights: number[] = []
+    const widths: number[] = []
+
+    for (let i = 1; i <= pdfDocument!.numPages; i++) {
+      pdfDocument!.getPage(i).then((page) => {
+        const viewPort = page.getViewport({ scale, rotation })
+        heights.push(viewPort.height)
+        widths.push(viewPort.width)
+      })
+    }
+
+    setPageHeights(heights)
+    setPageWidths(widths)
+  }
+
+  // =========================== Function definition ===============================
+
+  /**
+   * Initialize the page after uploading the PDF:
+   *   1. Calculating page heights
+   *   2. Turn off loading flag.
+   */
+  async function initialize() {
+    setIsLoading(true)
+    calculatePageSize()
+    setIsLoading(false)
+  }
+
+  /**
+   * Render the specified PDF page.
+   * @param pageIndex Page index.
+   * @param force If force to render even it is rendered.
+   * @param isScaled Will re-calculate page size if this is true.
+   * @returns
+   */
+  async function renderPage(pageIndex: number, force: boolean = false, isScaled: boolean = false) {
+    if (renderedPages.current.has(pageIndex) && !force) return
+
+    renderedPages.current.delete(pageIndex)
+
+    if (pageIndex < 1 || pageIndex > numPages) return
+
+    // Stop existed task, and re-render.
+    if (renderingPages.current.has(pageIndex)) {
+      console.log(`Stop and rerender page ${pageIndex}`)
+      cancelRender(pageIndex)
+      active--
+    }
+
+    active++
+
+    renderingPages.current.add(pageIndex)
+
+    if (isScaled) calculatePageSize()
+
+    const page = await pdfDocument!.getPage(pageIndex)
+    const viewPort = page.getViewport({ scale, rotation })
+    const dpr = window.devicePixelRatio || 1
+
+    if (!offscreenMap.current.has(pageIndex)) {
+      offscreenMap.current.set(pageIndex, document.createElement('canvas'))
+    }
+
+    const offscreen = offscreenMap.current.get(pageIndex)
+    if (!offscreen) {
+      console.error(`Off screen canvas not created for page ${pageIndex}`)
+      return
+    }
+
+    offscreen.width = Math.floor(pageWidths[pageIndex - 1] * dpr)
+    offscreen.height = Math.floor(pageHeights[pageIndex - 1] * dpr)
+
+    const ctx = offscreen.getContext('2d')!
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+    const task = page.render({
+      canvasContext: ctx,
+      canvas: offscreen,
+      viewport: viewPort
+    })
+
+    renderTasks.current.set(pageIndex, task)
+
+    try {
+      await task.promise
+
+      // Copy offscreen result onto the visible canvas
+      const visible = canvasMap.current.get(pageIndex)
+      if (!visible) {
+        console.error(`Canvas not created for page ${pageIndex}`)
+        return
+      }
+
+      visible.width = offscreen.width
+      visible.height = offscreen.height
+      visible.getContext('2d')!.drawImage(offscreen, 0, 0)
+
+      renderedPages.current.add(pageIndex)
+    } catch (e: any) {
+      if (e?.name !== 'RenderingCancelledException') {
+        console.error(e)
+      }
+    } finally {
+      renderingPages.current.delete(pageIndex)
+      renderTasks.current.delete(pageIndex)
+      active--
+    }
+  }
+
+  /**
+   * Register or unregister visible canvas.
+   * @param pageIndex Page index.
+   * @param element Canvas element.
+   */
+  function manageCanvas(pageIndex: number, element: HTMLCanvasElement | null) {
+    if (element) {
+      console.debug(`Canvas created for page ${pageIndex}`)
+
+      // Element created
+      canvasMap.current.set(pageIndex, element)
+      offscreenMap.current.set(pageIndex, document.createElement('canvas'))
+
+      // render page
+      renderPage(pageIndex)
+    } else {
+      // Element destroied
+      cancelRender(pageIndex)
+
+      // clear rendered page
+      renderedPages.current.delete(pageIndex)
+
+      // delete offscreen cache
+      const offscreenCanvas = offscreenMap.current.get(pageIndex)
+      if (offscreenCanvas) {
+        const ctx = offscreenCanvas.getContext('2d')
+        ctx?.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height)
+
+        offscreenCanvas.width = 0
+        offscreenCanvas.height = 0
+        offscreenMap.current.delete(pageIndex)
+      }
+    }
+  }
+
+  // Map page index to array index.
+  const pages = useMemo(() => Array.from({ length: numPages }, (_, i) => i + 1), [numPages])
+
+  /**
+   * Create canvases and divs.
+   * @returns JSX.Element[]
+   */
+  function createCanvases() {
+    return pages.map((pageIndex, i) => {
+      const height = pageHeights[i]
+      const width = pageWidths[i]
+      const isMounted = mountedPages.has(pageIndex)
+
+      return (
+        <div
+          key={pageIndex}
+          className="pdf-page bg-white shadow"
+          data-page={pageIndex}
+          style={{
+            height,
+            width,
+            transform: `scale(${tempScale / scale})`
+          }}
+        >
+          {isMounted ? (
+            <canvas ref={(el) => manageCanvas(pageIndex, el)} style={{ width, height }} />
+          ) : (
+            <div
+              style={{
+                height: '100%',
+                width: '100%',
+                background: '#f3f4f6',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <div className="animate-pulse text-gray-400">Loading...</div>
+            </div>
+          )}
+        </div>
+      )
+    })
+  }
+
+  function handleWheelEvent(event: WheelEvent) {
+    // Only response to ctrl event
+    if (!event.ctrlKey) return
+
+    // Prevent default behavior
+    event.preventDefault()
+    event.stopPropagation()
+
+    // Scale existed canvas
+    const step = event.deltaY > 0 ? -0.1 : 0.1
+    const newScale = Math.min(Math.max(scale + step, 0.5), 3.0)
+    setTempScale(Number(newScale.toFixed(2)))
+
+    // Re-render canvas 400ms after wheel stop
+    if (scaleTimerRef.current) clearTimeout(scaleTimerRef.current)
+    scaleTimerRef.current = setTimeout(() => {
+      setScale(Number(newScale.toFixed(2)))
+    }, 400)
+  }
+
+  // =============================================================================
 
   // ========================= Listen on variable changes ========================
 
   // Initialization: Create empty div with page height.
   useEffect(() => {
-    if (!document) return
-    setNumPages(document.numPages)
-
-    async function initialize() {
-      setIsLoading(true)
-      const heights: number[] = []
-      const widths: number[] = []
-
-      for (let i = 1; i <= document!.numPages; i++) {
-        const page = await document!.getPage(i)
-        const viewPort = page.getViewport({ scale, rotation })
-        heights.push(viewPort.height)
-        widths.push(viewPort.width)
-      }
-
-      setPageHeights(heights)
-      setPageWidths(widths)
-
-      setVisibleRange({
-        start: 1,
-        end: Math.min(document!.numPages, 1 + PAGE_BUFFER_NUM)
-      })
-
-      setIsLoading(false)
-    }
+    if (!pdfDocument) return
+    setNumPages(pdfDocument.numPages)
 
     initialize()
-  }, [document, scale, rotation])
+  }, [pdfDocument, rotation])
 
   // Initialize IntersectionObserver
   useEffect(() => {
     if (!containerDiv.current) return
-
-    let ticking = false
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
@@ -81,29 +290,51 @@ export default function PDFCanvas() {
           const page = Number(element.dataset.page)
 
           currentPageRef.current = page
+          console.log(`Current page change to page ${page}`)
 
-          if (!ticking) {
-            ticking = true
-            requestAnimationFrame(() => {
-              const start = Math.max(1, page - PAGE_BUFFER_NUM)
-              const end = Math.min(numPages, page + PAGE_BUFFER_NUM)
-              setVisibleRange({ start, end })
-              ticking = false
-            })
+          const next = new Set(mountedPages)
+
+          // delete invisible page
+          mountedPages.forEach((pageIndex) => {
+            if (pageIndex < page - RENDER_BUFFER_NUM || pageIndex > page + RENDER_BUFFER_NUM) {
+              next.delete(pageIndex)
+            }
+          })
+
+          // add new visible page
+          for (let i = page - RENDER_BUFFER_NUM; i <= page + RENDER_BUFFER_NUM; i++) {
+            if (i >= 1 && i <= numPages) next.add(i)
           }
 
-          if (farAway(page)) unmountCanvas(page)
+          // console.debug(`Mounted page changed to: ${Array.from(next)}`)
+          setTempMountedPages(next)
         }
       },
       {
         root: containerDiv.current,
-        rootMargin: '600px 0px',
+        rootMargin: '-1200px 0px 1200px 0px', // This seems to be right, doesn't know why
         threshold: 0.6
       }
     )
 
     return () => observerRef.current?.disconnect()
   }, [numPages])
+
+  useEffect(() => {
+    if (mountTimerRef.current) clearTimeout(mountTimerRef.current)
+
+    mountTimerRef.current = setTimeout(() => {
+      if (!isAnimationFrame) {
+        setIsAnimationFrame(true)
+        requestAnimationFrame(() => {
+          setMountedPages(new Set(tempMountedPages))
+          console.debug(`Mounted page changed to: ${Array.from(mountedPages)}`)
+
+          setIsAnimationFrame(false)
+        })
+      }
+    }, 400)
+  }, [tempMountedPages])
 
   // Observe all pages.
   useEffect(() => {
@@ -122,134 +353,37 @@ export default function PDFCanvas() {
   useEffect(() => {
     renderedPages.current.clear()
 
-    const canvases = containerDiv.current?.querySelectorAll('canvas')
-    canvases?.forEach((c) => {
-      const ctx = c.getContext('2d')
-      ctx?.clearRect(0, 0, c.width, c.height)
-    })
+    const currentPageIndex = currentPageRef.current
+
+    // Render the visible page first
+    renderPage(currentPageIndex - 1, true, true)
+    // Then the page to be visibled
+    renderPage(currentPageIndex, true, true)
+    renderPage(currentPageIndex - 2, true, true)
+
+    // Then the invisible page
+    renderPage(currentPageIndex + 1, true, true)
+    renderPage(currentPageIndex + 2, true, true)
+    renderPage(currentPageIndex + 3, true, true)
+    renderPage(currentPageIndex - 3, true, true)
   }, [scale, rotation])
 
+  // Listen on zoom in/out event
   useEffect(() => {
-    renderTasks.current.forEach((_, page) => {
-      if (!isInWindow(page)) cancelRender(page)
-    })
-  }, [visibleRange])
+    const container = containerDiv.current
+    if (!container) return
+
+    // 绑定事件，passive: false 允许preventDefault
+    container.addEventListener('wheel', handleWheelEvent, { passive: false })
+
+    // 组件卸载时解绑事件
+    return () => {
+      // if (scaleTimerRef.current) clearTimeout(scaleTimerRef.current)
+      container.removeEventListener('wheel', handleWheelEvent)
+    }
+  }, [scale, setScale])
 
   // ===============================================================================
-
-  // =========================== Function definition ===============================
-  async function renderPage(pageIndex: number, canvas: HTMLCanvasElement) {
-    if (renderedPages.current.has(pageIndex)) return
-    if (renderingPages.current.has(pageIndex)) return
-    if (active >= MAX_RENDER_NUM) return
-
-    active++
-
-    renderingPages.current.add(pageIndex)
-
-    const page = await document!.getPage(pageIndex)
-    const viewPort = page.getViewport({ scale, rotation })
-    const dpr = window.devicePixelRatio || 1
-
-    canvas.width = Math.floor(viewPort.width * dpr)
-    canvas.height = Math.floor(viewPort.height * dpr)
-    canvas.style.width = `${viewPort.width}px`
-    canvas.style.height = `${viewPort.height}px`
-
-    const ctx = canvas.getContext('2d')!
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-    const task = page.render({
-      canvasContext: ctx,
-      canvas,
-      viewport: viewPort
-    })
-
-    renderTasks.current.set(pageIndex, task)
-
-    try {
-      await task.promise
-      renderedPages.current.add(pageIndex)
-    } catch (e: any) {
-      if (e?.name !== 'RenderingCancelledException') {
-        console.error(e)
-      }
-    } finally {
-      renderingPages.current.delete(pageIndex)
-      renderTasks.current.delete(pageIndex)
-      active--
-    }
-  }
-
-  function cancelRender(pageIndex: number) {
-    const t = renderTasks.current.get(pageIndex)
-    if (t) {
-      try {
-        t.cancel()
-      } catch {}
-      renderTasks.current.delete(pageIndex)
-      renderingPages.current.delete(pageIndex)
-    }
-  }
-
-  const isInWindow = (page: number) => {
-    return page >= visibleRange.start && page <= visibleRange.end
-  }
-
-  function registerCanvas(pageIndex: number, element: HTMLCanvasElement | null) {
-    if (element) {
-      canvasMap.current.set(pageIndex, element)
-      if (isInRenderRange(pageIndex)) {
-        renderPage(pageIndex, element)
-      }
-    } else {
-      // 卸载：取消可能的渲染
-      canvasMap.current.delete(pageIndex)
-      cancelRender(pageIndex)
-    }
-  }
-
-  const pages = useMemo(() => Array.from({ length: numPages }, (_, i) => i + 1), [numPages])
-
-  const isInRenderRange = (page: number) => {
-    return (
-      page >= currentPageRef.current - RENDER_BUFFER_NUM &&
-      page <= currentPageRef.current + RENDER_BUFFER_NUM
-    )
-  }
-
-  function farAway(page: number) {
-    const current = currentPageRef.current
-
-    return Math.abs(page - current) > PAGE_BUFFER_NUM * 2
-  }
-
-  function unmountCanvas(pageIndex: number) {
-    // Cancel render task
-    const task = renderTasks.current.get(pageIndex)
-    if (task) {
-      try {
-        task.cancel()
-      } catch {}
-      renderTasks.current.delete(pageIndex)
-    }
-
-    renderedPages.current.delete(pageIndex)
-    renderingPages.current.delete(pageIndex)
-
-    const canvas = canvasMap.current.get(pageIndex)
-    if (canvas) {
-      const ctx = canvas.getContext('2d')
-      ctx?.clearRect(0, 0, canvas.width, canvas.height)
-
-      canvas.width = 0
-      canvas.height = 0
-    }
-
-    canvasMap.current.delete(pageIndex)
-  }
-
-  // ==================================================================
 
   return (
     <div ref={containerDiv} className="pdf-viewer relative w-full h-full overflow-auto">
@@ -261,42 +395,7 @@ export default function PDFCanvas() {
       ) : (
         <div className="flex flex-col items-center w-full gap-4">
           <div style={{ height: '50px', width: '100%' }} />
-          {pages.map((pageIndex, i) => {
-            const height = pageHeights[i]
-            const width = pageWidths[i]
-            const visible = isInWindow(pageIndex)
-
-            return (
-              <div
-                key={pageIndex}
-                className="pdf-page bg-white shadow"
-                data-page={pageIndex}
-                style={{
-                  height,
-                  width,
-                  display: 'flex',
-                  justifyContent: 'center'
-                }}
-              >
-                {visible ? (
-                  <canvas ref={(el) => registerCanvas(pageIndex, el)} style={{ width, height }} />
-                ) : (
-                  <div
-                    style={{
-                      height: '100%',
-                      width: '100%',
-                      background: '#f3f4f6',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <div className="animate-pulse text-gray-400">Loading...</div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          {createCanvases()}
         </div>
       )}
     </div>
