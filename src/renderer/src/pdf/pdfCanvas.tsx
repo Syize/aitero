@@ -1,6 +1,5 @@
 // TODO:
-//   1. Fix the bug that can't scale properly.
-//   2. Fix the bug that can't scale continuously.
+//   1. Fix the bug that can't scale continuously.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './pdfCanvas.css'
 import { usePDFContext } from './pdfState'
@@ -40,10 +39,12 @@ export default function PDFCanvas() {
 
   const [isAnimationFrame, setIsAnimationFrame] = useState(false)
 
-  let active = 0
-
   // =========================== Utility functions =================================
 
+  /**
+   * Cancel page render task.
+   * @param pageIndex Page index.
+   */
   function cancelRender(pageIndex: number) {
     const t = renderTasks.current.get(pageIndex)
     if (t) {
@@ -55,16 +56,18 @@ export default function PDFCanvas() {
     }
   }
 
-  function calculatePageSize() {
+  /**
+   * Calculate all page size.
+   */
+  async function calculatePageSize() {
     const heights: number[] = []
     const widths: number[] = []
 
     for (let i = 1; i <= pdfDocument!.numPages; i++) {
-      pdfDocument!.getPage(i).then((page) => {
-        const viewPort = page.getViewport({ scale, rotation })
-        heights.push(viewPort.height)
-        widths.push(viewPort.width)
-      })
+      const page = await pdfDocument!.getPage(i)
+      const viewport = page.getViewport({ scale, rotation })
+      heights.push(viewport.height)
+      widths.push(viewport.width)
     }
 
     setPageHeights(heights)
@@ -80,7 +83,7 @@ export default function PDFCanvas() {
    */
   async function initialize() {
     setIsLoading(true)
-    calculatePageSize()
+    await calculatePageSize()
     setIsLoading(false)
   }
 
@@ -88,10 +91,9 @@ export default function PDFCanvas() {
    * Render the specified PDF page.
    * @param pageIndex Page index.
    * @param force If force to render even it is rendered.
-   * @param isScaled Will re-calculate page size if this is true.
    * @returns
    */
-  async function renderPage(pageIndex: number, force: boolean = false, isScaled: boolean = false) {
+  async function renderPage(pageIndex: number, force: boolean = false) {
     if (renderedPages.current.has(pageIndex) && !force) return
 
     renderedPages.current.delete(pageIndex)
@@ -102,14 +104,11 @@ export default function PDFCanvas() {
     if (renderingPages.current.has(pageIndex)) {
       console.log(`Stop and rerender page ${pageIndex}`)
       cancelRender(pageIndex)
-      active--
     }
-
-    active++
 
     renderingPages.current.add(pageIndex)
 
-    if (isScaled) calculatePageSize()
+    // if (isScaled) calculatePageSize()
 
     const page = await pdfDocument!.getPage(pageIndex)
     const viewPort = page.getViewport({ scale, rotation })
@@ -125,8 +124,8 @@ export default function PDFCanvas() {
       return
     }
 
-    offscreen.width = Math.floor(pageWidths[pageIndex - 1] * dpr)
-    offscreen.height = Math.floor(pageHeights[pageIndex - 1] * dpr)
+    offscreen.width = Math.floor(viewPort.width * dpr)
+    offscreen.height = Math.floor(viewPort.height * dpr)
 
     const ctx = offscreen.getContext('2d')!
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -161,7 +160,6 @@ export default function PDFCanvas() {
     } finally {
       renderingPages.current.delete(pageIndex)
       renderTasks.current.delete(pageIndex)
-      active--
     }
   }
 
@@ -245,6 +243,11 @@ export default function PDFCanvas() {
     })
   }
 
+  /**
+   * Handle WheelEvent.
+   * @param event Wheel event.
+   * @returns void
+   */
   function handleWheelEvent(event: WheelEvent) {
     // Only response to ctrl event
     if (!event.ctrlKey) return
@@ -255,14 +258,8 @@ export default function PDFCanvas() {
 
     // Scale existed canvas
     const step = event.deltaY > 0 ? -0.1 : 0.1
-    const newScale = Math.min(Math.max(scale + step, 0.5), 3.0)
+    const newScale = Math.min(Math.max(tempScale + step, 0.5), 3.0)
     setTempScale(Number(newScale.toFixed(2)))
-
-    // Re-render canvas 400ms after wheel stop
-    if (scaleTimerRef.current) clearTimeout(scaleTimerRef.current)
-    scaleTimerRef.current = setTimeout(() => {
-      setScale(Number(newScale.toFixed(2)))
-    }, 400)
   }
 
   // =============================================================================
@@ -320,6 +317,15 @@ export default function PDFCanvas() {
     return () => observerRef.current?.disconnect()
   }, [numPages])
 
+  // Set scale after wheel stop (400ms later).
+  useEffect(() => {
+    if (scaleTimerRef.current) clearTimeout(scaleTimerRef.current)
+    scaleTimerRef.current = setTimeout(() => {
+      setScale(Number(tempScale.toFixed(2)))
+    }, 400)
+  }, [tempScale])
+
+  // Set mounted page after scrolling stop (400ms later)
   useEffect(() => {
     if (mountTimerRef.current) clearTimeout(mountTimerRef.current)
 
@@ -351,21 +357,28 @@ export default function PDFCanvas() {
 
   // Redraw when scale and rotation change
   useEffect(() => {
-    renderedPages.current.clear()
+    calculatePageSize().then(() => {
+      renderedPages.current.clear()
 
-    const currentPageIndex = currentPageRef.current
+      const currentPageIndex = currentPageRef.current
 
-    // Render the visible page first
-    renderPage(currentPageIndex - 1, true, true)
-    // Then the page to be visibled
-    renderPage(currentPageIndex, true, true)
-    renderPage(currentPageIndex - 2, true, true)
+      const renderOrder = [
+        // Render the visible page first
+        currentPageIndex - 1,
+        // Then the page to be visibled
+        currentPageIndex,
+        currentPageIndex - 2,
+        // Then the invisible page
+        currentPageIndex + 1,
+        currentPageIndex + 2,
+        currentPageIndex + 3,
+        currentPageIndex - 3
+      ]
 
-    // Then the invisible page
-    renderPage(currentPageIndex + 1, true, true)
-    renderPage(currentPageIndex + 2, true, true)
-    renderPage(currentPageIndex + 3, true, true)
-    renderPage(currentPageIndex - 3, true, true)
+      renderOrder.forEach((page) => {
+        renderPage(page, true)
+      })
+    })
   }, [scale, rotation])
 
   // Listen on zoom in/out event
@@ -373,12 +386,9 @@ export default function PDFCanvas() {
     const container = containerDiv.current
     if (!container) return
 
-    // 绑定事件，passive: false 允许preventDefault
     container.addEventListener('wheel', handleWheelEvent, { passive: false })
 
-    // 组件卸载时解绑事件
     return () => {
-      // if (scaleTimerRef.current) clearTimeout(scaleTimerRef.current)
       container.removeEventListener('wheel', handleWheelEvent)
     }
   }, [scale, setScale])
