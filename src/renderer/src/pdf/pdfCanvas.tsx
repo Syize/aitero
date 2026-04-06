@@ -1,5 +1,8 @@
 // TODO:
-//   1. Fix the bug that can't scale continuously.
+//   1. Fix the bug that PDF will crash after several scales.
+// NOTE:
+//   1. React will rerender PDF after scaling, no need to use useEffect for scale.
+import { RenderTask } from 'pdfjs-dist'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './pdfCanvas.css'
 import { usePDFContext } from './pdfState'
@@ -14,12 +17,13 @@ export default function PDFCanvas() {
   const observerRef = useRef<IntersectionObserver | null>(null)
   const canvasMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
   const offscreenMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
+  // const canvasRenderStatus = useRef<Map<number, boolean>>(new Map())
 
   const renderedPages = useRef<Set<number>>(new Set())
   const renderingPages = useRef<Set<number>>(new Set())
-  const renderTasks = useRef<Map<number, any>>(new Map())
+  const renderTasks = useRef<Map<number, RenderTask>>(new Map())
 
-  const scaleTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // const scaleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const mountTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Page numbers of PDF document
@@ -29,15 +33,27 @@ export default function PDFCanvas() {
   const [isLoading, setIsLoading] = useState(true)
 
   // Scale of the on screen canvas
-  const [tempScale, setTempScale] = useState(scale)
+  // const [tempScale, setTempScale] = useState(scale)
+  // const [visualScale, setVisualScale] = useState(scale)
+  const [canvasScaleRatio, setCanvasScaleRatio] = useState(1)
+  const scaleRef = useRef(scale)
+  const canvasScaleRef = useRef(scale)
 
   const currentPageRef = useRef(1)
+  const isScalingRef = useRef(false)
+  const isInAnimeFrameRef = useRef(false)
 
   // Mounted canvas index.
   const [tempMountedPages, setTempMountedPages] = useState<Set<number>>(new Set())
   const [mountedPages, setMountedPages] = useState<Set<number>>(new Set())
+  const setMountedPagesLaterRef = useRef(false)
 
-  const [isAnimationFrame, setIsAnimationFrame] = useState(false)
+  // const [isAnimationFrame, setIsAnimationFrame] = useState(false)
+  // const [isScalingStable, setIsScalingStable] = useState(true)
+  // const [isScrolling, setIsScrolling] = useState(false)
+  // const [isRenderingScale, setIsRenderingScale] = useState(false)
+
+  const lastWheelTimeRef = useRef(Date.now())
 
   // =========================== Utility functions =================================
 
@@ -74,6 +90,12 @@ export default function PDFCanvas() {
     setPageWidths(widths)
   }
 
+  function resetScaleState() {
+    setCanvasScaleRatio(1)
+    canvasScaleRef.current = scale
+    scaleRef.current = scale
+  }
+
   // =========================== Function definition ===============================
 
   /**
@@ -84,6 +106,8 @@ export default function PDFCanvas() {
   async function initialize() {
     setIsLoading(true)
     await calculatePageSize()
+    resetScaleState()
+    // for (let i = 1; i <= numPages; i++) canvasRenderStatus.current.set(i, false)
     setIsLoading(false)
   }
 
@@ -94,11 +118,23 @@ export default function PDFCanvas() {
    * @returns
    */
   async function renderPage(pageIndex: number, force: boolean = false) {
-    if (renderedPages.current.has(pageIndex) && !force) return
+    if (renderedPages.current.has(pageIndex) && !force) {
+      console.debug(`Page ${pageIndex} rendered, skip`)
+      return
+    }
+
+    // if (force) {
+    //   console.debug(`Force render page ${pageIndex}`)
+    // } else {
+    //   console.debug(`Render page ${pageIndex}`)
+    // }
 
     renderedPages.current.delete(pageIndex)
 
-    if (pageIndex < 1 || pageIndex > numPages) return
+    if (pageIndex < 1 || pageIndex > numPages) {
+      console.debug(`Invalid page index, skip`)
+      return
+    }
 
     // Stop existed task, and re-render.
     if (renderingPages.current.has(pageIndex)) {
@@ -161,6 +197,11 @@ export default function PDFCanvas() {
       renderingPages.current.delete(pageIndex)
       renderTasks.current.delete(pageIndex)
     }
+
+    // canvasRenderStatus.current.set(pageIndex, false)
+    // if (pageIndex === currentPageRef.current - 3) {
+    //   setIsScalingStable(true)
+    // }
   }
 
   /**
@@ -170,13 +211,17 @@ export default function PDFCanvas() {
    */
   function manageCanvas(pageIndex: number, element: HTMLCanvasElement | null) {
     if (element) {
-      console.debug(`Canvas created for page ${pageIndex}`)
+      // console.debug(`Canvas created for page ${pageIndex}`)
 
       // Element created
       canvasMap.current.set(pageIndex, element)
       offscreenMap.current.set(pageIndex, document.createElement('canvas'))
 
+      // if (!canvasRenderStatus.current.has(pageIndex))
+      //   canvasRenderStatus.current.set(pageIndex, true)
+
       // render page
+      console.debug(`Render trigerred at "manageCanvas" for page ${pageIndex}`)
       renderPage(pageIndex)
     } else {
       // Element destroied
@@ -210,6 +255,7 @@ export default function PDFCanvas() {
       const height = pageHeights[i]
       const width = pageWidths[i]
       const isMounted = mountedPages.has(pageIndex)
+      // const ratio = isScalingStable ? visualScale / scale : visualScale / visualScale
 
       return (
         <div
@@ -217,13 +263,15 @@ export default function PDFCanvas() {
           className="pdf-page bg-white shadow"
           data-page={pageIndex}
           style={{
-            height,
-            width,
-            transform: `scale(${tempScale / scale})`
+            height: height * canvasScaleRatio,
+            width: width * canvasScaleRatio
           }}
         >
           {isMounted ? (
-            <canvas ref={(el) => manageCanvas(pageIndex, el)} style={{ width, height }} />
+            <canvas
+              ref={(el) => manageCanvas(pageIndex, el)}
+              style={{ width: '100%', height: '100%' }}
+            />
           ) : (
             <div
               style={{
@@ -252,14 +300,31 @@ export default function PDFCanvas() {
     // Only response to ctrl event
     if (!event.ctrlKey) return
 
+    // setIsScrolling(true)
+    // isScrollingRef.current = true
+
     // Prevent default behavior
     event.preventDefault()
-    event.stopPropagation()
+    // event.stopPropagation()
 
     // Scale existed canvas
-    const step = event.deltaY > 0 ? -0.1 : 0.1
-    const newScale = Math.min(Math.max(tempScale + step, 0.5), 3.0)
-    setTempScale(Number(newScale.toFixed(2)))
+    // const step = event.deltaY > 0 ? -0.1 : 0.1
+    const zoomFactor = Math.exp(-event.deltaY * 0.001)
+    // tempScaleRef.current *= zoomFactor
+    canvasScaleRef.current *= zoomFactor
+
+    console.debug(`Set canvas ratio to ${canvasScaleRef.current}`)
+    // setCanvasScaleRatio(canvasScaleRatio * zoomFactor)
+
+    requestAnimationFrame(() => {
+      // setTempScale(tempScaleRef.current)
+      // setVisualScale(visualScaleRef.current)
+      setCanvasScaleRatio(canvasScaleRef.current)
+      lastWheelTimeRef.current = Date.now()
+      isScalingRef.current = true
+    })
+    // const newScale = Math.min(Math.max(tempScale * zoomFactor, 0.5), 3.0)
+    // setTempScale(Number(newScale.toFixed(2)))
   }
 
   // =============================================================================
@@ -280,6 +345,7 @@ export default function PDFCanvas() {
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
+        // if (isScalingRef.current) return
         for (const entry of entries) {
           if (!entry.isIntersecting) continue
 
@@ -318,26 +384,84 @@ export default function PDFCanvas() {
   }, [numPages])
 
   // Set scale after wheel stop (400ms later).
+  // useEffect(() => {
+  //   if (scaleTimerRef.current) clearTimeout(scaleTimerRef.current)
+  //   scaleTimerRef.current = setTimeout(() => {
+  //     setScale(Number(tempScale.toFixed(2)))
+  //   }, 400)
+  // }, [tempScale])
+
+  // Idle detection
   useEffect(() => {
-    if (scaleTimerRef.current) clearTimeout(scaleTimerRef.current)
-    scaleTimerRef.current = setTimeout(() => {
-      setScale(Number(tempScale.toFixed(2)))
-    }, 400)
-  }, [tempScale])
+    const interval = setInterval(() => {
+      if (Date.now() - lastWheelTimeRef.current > 150 && isScalingRef.current) {
+        //
+        // setIsRenderingScale(true)
+
+        // Save the current scale to oldScale, to keep transform smooth.
+        // console.debug(`Change old scale to `)
+        // setOldScale(scale)
+        // setIsScalingStable(false)
+        // canvasRenderStatus.current.forEach((_, key) => {
+        //   if (mountedPages.has(key)) canvasRenderStatus.current.set(key, true)
+        // })
+
+        console.debug(`Set scale to ${scale * canvasScaleRef.current}`)
+        scaleRef.current *= canvasScaleRef.current
+        setScale(scaleRef.current)
+
+        // setIsScrolling(false)
+        isScalingRef.current = false
+
+        if (setMountedPagesLaterRef.current) {
+          if (!isInAnimeFrameRef.current) {
+            isInAnimeFrameRef.current = true
+            // setIsAnimationFrame(true)
+            requestAnimationFrame(() => {
+              setMountedPages(new Set(tempMountedPages))
+              console.debug(`Mounted page changed to: ${Array.from(mountedPages)}`)
+
+              // setIsAnimationFrame(false)
+              isInAnimeFrameRef.current = false
+            })
+          }
+
+          setMountedPagesLaterRef.current = false
+        }
+      }
+    }, 100)
+
+    return () => clearInterval(interval)
+  }, [])
 
   // Set mounted page after scrolling stop (400ms later)
   useEffect(() => {
     if (mountTimerRef.current) clearTimeout(mountTimerRef.current)
 
     mountTimerRef.current = setTimeout(() => {
-      if (!isAnimationFrame) {
-        setIsAnimationFrame(true)
-        requestAnimationFrame(() => {
-          setMountedPages(new Set(tempMountedPages))
-          console.debug(`Mounted page changed to: ${Array.from(mountedPages)}`)
+      if (!isInAnimeFrameRef.current) {
+        if (isScalingRef.current) {
+          setMountedPagesLaterRef.current = true
+        } else {
+          isInAnimeFrameRef.current = true
+          // setIsAnimationFrame(true)
+          requestAnimationFrame(() => {
+            setMountedPages(new Set(tempMountedPages))
+            console.debug(`Mounted page changed to: ${Array.from(mountedPages)}`)
 
-          setIsAnimationFrame(false)
-        })
+            // setIsAnimationFrame(false)
+            isInAnimeFrameRef.current = false
+          })
+        }
+        // isInAnimeFrameRef.current = true
+        // // setIsAnimationFrame(true)
+        // requestAnimationFrame(() => {
+        //   setMountedPages(new Set(tempMountedPages))
+        //   console.debug(`Mounted page changed to: ${Array.from(mountedPages)}`)
+
+        //   // setIsAnimationFrame(false)
+        //   isInAnimeFrameRef.current = false
+        // })
       }
     }, 400)
   }, [tempMountedPages])
@@ -357,7 +481,10 @@ export default function PDFCanvas() {
 
   // Redraw when scale and rotation change
   useEffect(() => {
+    if (!pdfDocument) return
+
     calculatePageSize().then(() => {
+      // setIsScalingStable(true)
       renderedPages.current.clear()
 
       const currentPageIndex = currentPageRef.current
@@ -376,10 +503,18 @@ export default function PDFCanvas() {
       ]
 
       renderOrder.forEach((page) => {
+        console.debug(`Render trigerred at "useEffect" for page ${page}`)
         renderPage(page, true)
       })
     })
-  }, [scale, rotation])
+  }, [rotation])
+
+  useEffect(() => {
+    // setIsScalingStable(true)
+    // setCanvasScaleRatio(1)
+    canvasScaleRef.current = 1
+    setCanvasScaleRatio(canvasScaleRef.current)
+  }, [pageHeights, pageWidths])
 
   // Listen on zoom in/out event
   useEffect(() => {
