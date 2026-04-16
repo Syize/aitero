@@ -2,51 +2,126 @@
 //   1. Fix the bug that PDF will crash after several scales.
 // NOTE:
 //   1. React will rerender PDF after scaling, no need to use useEffect for scale.
-import { RenderTask } from 'pdfjs-dist'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './pdfCanvas.css'
+import { useCanvasRegistry } from './pdfCanvas/canvas'
+import { usePDFDocument } from './pdfCanvas/document'
+import { Priority, useRenderScheduler } from './pdfCanvas/render'
+import { useViewportManager } from './pdfCanvas/viewport'
 import { usePDFContext } from './pdfState'
+import { pdfLogger } from './utils'
 
-const RENDER_BUFFER_NUM = 3
+function computePriority(pageIndex: number, currentPage: number): Priority {
+  let dist = Math.abs(pageIndex - currentPage)
+
+  switch (dist) {
+    case 0:
+      return 2
+
+    case 1:
+      return 1
+
+    default:
+      return 0
+  }
+}
 
 export default function PDFCanvas() {
   const { state, setScale } = usePDFContext()
-
   const { scale, rotation, document: pdfDocument } = state
+
   const containerDiv = useRef<HTMLDivElement>(null)
-  const observerRef = useRef<IntersectionObserver | null>(null)
-  const canvasMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
-  const offscreenMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
+  // const observerRef = useRef<IntersectionObserver | null>(null)
+  // const canvasMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
+  // const offscreenMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
   // const canvasRenderStatus = useRef<Map<number, boolean>>(new Map())
 
-  const renderedPages = useRef<Set<number>>(new Set())
-  const renderingPages = useRef<Set<number>>(new Set())
-  const renderTasks = useRef<Map<number, RenderTask>>(new Map())
+  // Custom hook
+  const canvasRegistry = useCanvasRegistry()
+  const { pageNum, pageSizes, isLoading } = usePDFDocument(pdfDocument, rotation)
+  const { currentPage, mountedPages } = useViewportManager(containerDiv, pageNum)
+
+  // Render function used by custom hook
+  const renderExecutor = useCallback(
+    async (pageIndex: number, version: number, getVersion: (pageIndex: number) => number) => {
+      if (!pdfDocument) return
+
+      const canvas = canvasRegistry.getCanvas(pageIndex)
+      if (!canvas) {
+        pdfLogger('Render', `Canvas doesn't exist for page ${pageIndex}, skip`, 'debug')
+        return
+      }
+
+      pdfLogger('Render', `Render page ${pageIndex}`, 'debug')
+
+      const page = await pdfDocument.getPage(pageIndex)
+      const offscreen = canvasRegistry.getOffscreenCanvas(pageIndex)
+
+      const task = page.render({
+        canvasContext: offscreen.getContext('2d')!,
+        canvas: offscreen,
+        viewport: page.getViewport({
+          scale,
+          rotation
+        })
+      })
+
+      // Copied rendered results to onscreen canvas
+      task.promise.then(() => {
+        if (version !== getVersion(pageIndex)) {
+          pdfLogger('Render', `Outdated results for page ${pageIndex}, skip`, 'debug')
+          return
+        }
+
+        const visible = canvasRegistry.getCanvas(pageIndex)
+        if (!visible) {
+          pdfLogger('Render', `Canvas doesn't exist for page ${pageIndex}, skip`, 'debug')
+          return
+        }
+
+        visible.width = offscreen.width
+        visible.height = offscreen.height
+        visible.getContext('2d')!.drawImage(offscreen, 0, 0)
+      })
+
+      return task
+    },
+    [canvasRegistry]
+  )
+
+  const { schedule, newVersion } = useRenderScheduler(renderExecutor)
+
+  // const renderedPages = useRef<Set<number>>(new Set())
+  // const renderingPages = useRef<Set<number>>(new Set())
+  // const renderTasks = useRef<Map<number, RenderTask>>(new Map())
 
   // const scaleTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const mountTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // const mountTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Page numbers of PDF document
-  const [numPages, setNumPages] = useState(0)
-  const [pageHeights, setPageHeights] = useState<number[]>([])
-  const [pageWidths, setPageWidths] = useState<number[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // const [numPages, setNumPages] = useState(0)
+  // const [pageHeights, setPageHeights] = useState<number[]>([])
+  // const [pageWidths, setPageWidths] = useState<number[]>([])
+  // const [isLoading, setIsLoading] = useState(true)
+  // const { numPages, pageSizes, isLoading } = usePDFDocument(pdfDocument, rotation)
 
   // Scale of the on screen canvas
   // const [tempScale, setTempScale] = useState(scale)
   // const [visualScale, setVisualScale] = useState(scale)
   const [canvasScaleRatio, setCanvasScaleRatio] = useState(1)
-  const scaleRef = useRef(scale)
+  // const scaleRef = useRef(scale)
   const canvasScaleRef = useRef(scale)
 
-  const currentPageRef = useRef(1)
+  // const currentPageRef = useRef(1)
   const isScalingRef = useRef(false)
-  const isInAnimeFrameRef = useRef(false)
+  // const isInAnimeFrameRef = useRef(false)
 
   // Mounted canvas index.
-  const [tempMountedPages, setTempMountedPages] = useState<Set<number>>(new Set())
-  const [mountedPages, setMountedPages] = useState<Set<number>>(new Set())
-  const setMountedPagesLaterRef = useRef(false)
+  // const [tempMountedPages, setTempMountedPages] = useState<Set<number>>(new Set())
+  // const [mountedPages, setMountedPages] = useState<Set<number>>(new Set())
+  // const setMountedPagesLaterRef = useRef(false)
+
+  // const { mountedPages, currentPage } = useViewportManager(containerDiv, numPages)
 
   // const [isAnimationFrame, setIsAnimationFrame] = useState(false)
   // const [isScalingStable, setIsScalingStable] = useState(true)
@@ -57,44 +132,51 @@ export default function PDFCanvas() {
 
   // =========================== Utility functions =================================
 
+  const requestRender = useCallback(
+    (pageIndex: number) => {
+      schedule(pageIndex, computePriority(pageIndex, currentPage))
+    },
+    [currentPage]
+  )
+
   /**
    * Cancel page render task.
    * @param pageIndex Page index.
    */
-  function cancelRender(pageIndex: number) {
-    const t = renderTasks.current.get(pageIndex)
-    if (t) {
-      try {
-        t.cancel()
-      } catch {}
-      renderTasks.current.delete(pageIndex)
-      renderingPages.current.delete(pageIndex)
-    }
-  }
+  // function cancelRender(pageIndex: number) {
+  //   const t = renderTasks.current.get(pageIndex)
+  //   if (t) {
+  //     try {
+  //       t.cancel()
+  //     } catch {}
+  //     renderTasks.current.delete(pageIndex)
+  //     renderingPages.current.delete(pageIndex)
+  //   }
+  // }
 
   /**
    * Calculate all page size.
    */
-  async function calculatePageSize() {
-    const heights: number[] = []
-    const widths: number[] = []
+  // async function calculatePageSize() {
+  //   const heights: number[] = []
+  //   const widths: number[] = []
 
-    for (let i = 1; i <= pdfDocument!.numPages; i++) {
-      const page = await pdfDocument!.getPage(i)
-      const viewport = page.getViewport({ scale, rotation })
-      heights.push(viewport.height)
-      widths.push(viewport.width)
-    }
+  //   for (let i = 1; i <= pdfDocument!.numPages; i++) {
+  //     const page = await pdfDocument!.getPage(i)
+  //     const viewport = page.getViewport({ scale, rotation })
+  //     heights.push(viewport.height)
+  //     widths.push(viewport.width)
+  //   }
 
-    setPageHeights(heights)
-    setPageWidths(widths)
-  }
+  //   setPageHeights(heights)
+  //   setPageWidths(widths)
+  // }
 
-  function resetScaleState() {
-    setCanvasScaleRatio(1)
-    canvasScaleRef.current = scale
-    scaleRef.current = scale
-  }
+  // function resetScaleState() {
+  //   setCanvasScaleRatio(1)
+  //   canvasScaleRef.current = scale
+  //   scaleRef.current = scale
+  // }
 
   // =========================== Function definition ===============================
 
@@ -103,13 +185,13 @@ export default function PDFCanvas() {
    *   1. Calculating page heights
    *   2. Turn off loading flag.
    */
-  async function initialize() {
-    setIsLoading(true)
-    await calculatePageSize()
-    resetScaleState()
-    // for (let i = 1; i <= numPages; i++) canvasRenderStatus.current.set(i, false)
-    setIsLoading(false)
-  }
+  // async function initialize() {
+  //   setIsLoading(true)
+  //   await calculatePageSize()
+  //   resetScaleState()
+  //   // for (let i = 1; i <= numPages; i++) canvasRenderStatus.current.set(i, false)
+  //   setIsLoading(false)
+  // }
 
   /**
    * Render the specified PDF page.
@@ -117,134 +199,134 @@ export default function PDFCanvas() {
    * @param force If force to render even it is rendered.
    * @returns
    */
-  async function renderPage(pageIndex: number, force: boolean = false) {
-    if (renderedPages.current.has(pageIndex) && !force) {
-      console.debug(`Page ${pageIndex} rendered, skip`)
-      return
-    }
+  // async function renderPage(pageIndex: number, force: boolean = false) {
+  //   if (renderedPages.current.has(pageIndex) && !force) {
+  //     console.debug(`Page ${pageIndex} rendered, skip`)
+  //     return
+  //   }
 
-    // if (force) {
-    //   console.debug(`Force render page ${pageIndex}`)
-    // } else {
-    //   console.debug(`Render page ${pageIndex}`)
-    // }
+  //   // if (force) {
+  //   //   console.debug(`Force render page ${pageIndex}`)
+  //   // } else {
+  //   //   console.debug(`Render page ${pageIndex}`)
+  //   // }
 
-    renderedPages.current.delete(pageIndex)
+  //   renderedPages.current.delete(pageIndex)
 
-    if (pageIndex < 1 || pageIndex > numPages) {
-      console.debug(`Invalid page index, skip`)
-      return
-    }
+  //   if (pageIndex < 1 || pageIndex > numPages) {
+  //     console.debug(`Invalid page index, skip`)
+  //     return
+  //   }
 
-    // Stop existed task, and re-render.
-    if (renderingPages.current.has(pageIndex)) {
-      console.log(`Stop and rerender page ${pageIndex}`)
-      cancelRender(pageIndex)
-    }
+  //   // Stop existed task, and re-render.
+  //   if (renderingPages.current.has(pageIndex)) {
+  //     console.log(`Stop and rerender page ${pageIndex}`)
+  //     cancelRender(pageIndex)
+  //   }
 
-    renderingPages.current.add(pageIndex)
+  //   renderingPages.current.add(pageIndex)
 
-    // if (isScaled) calculatePageSize()
+  //   // if (isScaled) calculatePageSize()
 
-    const page = await pdfDocument!.getPage(pageIndex)
-    const viewPort = page.getViewport({ scale, rotation })
-    const dpr = window.devicePixelRatio || 1
+  //   const page = await pdfDocument!.getPage(pageIndex)
+  //   const viewPort = page.getViewport({ scale, rotation })
+  //   const dpr = window.devicePixelRatio || 1
 
-    if (!offscreenMap.current.has(pageIndex)) {
-      offscreenMap.current.set(pageIndex, document.createElement('canvas'))
-    }
+  //   if (!offscreenMap.current.has(pageIndex)) {
+  //     offscreenMap.current.set(pageIndex, document.createElement('canvas'))
+  //   }
 
-    const offscreen = offscreenMap.current.get(pageIndex)
-    if (!offscreen) {
-      console.error(`Off screen canvas not created for page ${pageIndex}`)
-      return
-    }
+  //   const offscreen = offscreenMap.current.get(pageIndex)
+  //   if (!offscreen) {
+  //     console.error(`Off screen canvas not created for page ${pageIndex}`)
+  //     return
+  //   }
 
-    offscreen.width = Math.floor(viewPort.width * dpr)
-    offscreen.height = Math.floor(viewPort.height * dpr)
+  //   offscreen.width = Math.floor(viewPort.width * dpr)
+  //   offscreen.height = Math.floor(viewPort.height * dpr)
 
-    const ctx = offscreen.getContext('2d')!
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  //   const ctx = offscreen.getContext('2d')!
+  //   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-    const task = page.render({
-      canvasContext: ctx,
-      canvas: offscreen,
-      viewport: viewPort
-    })
+  //   const task = page.render({
+  //     canvasContext: ctx,
+  //     canvas: offscreen,
+  //     viewport: viewPort
+  //   })
 
-    renderTasks.current.set(pageIndex, task)
+  //   renderTasks.current.set(pageIndex, task)
 
-    try {
-      await task.promise
+  //   try {
+  //     await task.promise
 
-      // Copy offscreen result onto the visible canvas
-      const visible = canvasMap.current.get(pageIndex)
-      if (!visible) {
-        console.error(`Canvas not created for page ${pageIndex}`)
-        return
-      }
+  //     // Copy offscreen result onto the visible canvas
+  //     const visible = canvasMap.current.get(pageIndex)
+  //     if (!visible) {
+  //       console.error(`Canvas not created for page ${pageIndex}`)
+  //       return
+  //     }
 
-      visible.width = offscreen.width
-      visible.height = offscreen.height
-      visible.getContext('2d')!.drawImage(offscreen, 0, 0)
+  //     visible.width = offscreen.width
+  //     visible.height = offscreen.height
+  //     visible.getContext('2d')!.drawImage(offscreen, 0, 0)
 
-      renderedPages.current.add(pageIndex)
-    } catch (e: any) {
-      if (e?.name !== 'RenderingCancelledException') {
-        console.error(e)
-      }
-    } finally {
-      renderingPages.current.delete(pageIndex)
-      renderTasks.current.delete(pageIndex)
-    }
+  //     renderedPages.current.add(pageIndex)
+  //   } catch (e: any) {
+  //     if (e?.name !== 'RenderingCancelledException') {
+  //       console.error(e)
+  //     }
+  //   } finally {
+  //     renderingPages.current.delete(pageIndex)
+  //     renderTasks.current.delete(pageIndex)
+  //   }
 
-    // canvasRenderStatus.current.set(pageIndex, false)
-    // if (pageIndex === currentPageRef.current - 3) {
-    //   setIsScalingStable(true)
-    // }
-  }
+  //   // canvasRenderStatus.current.set(pageIndex, false)
+  //   // if (pageIndex === currentPageRef.current - 3) {
+  //   //   setIsScalingStable(true)
+  //   // }
+  // }
 
   /**
    * Register or unregister visible canvas.
    * @param pageIndex Page index.
    * @param element Canvas element.
    */
-  function manageCanvas(pageIndex: number, element: HTMLCanvasElement | null) {
-    if (element) {
-      // console.debug(`Canvas created for page ${pageIndex}`)
+  // function manageCanvas(pageIndex: number, element: HTMLCanvasElement | null) {
+  //   if (element) {
+  //     // console.debug(`Canvas created for page ${pageIndex}`)
 
-      // Element created
-      canvasMap.current.set(pageIndex, element)
-      offscreenMap.current.set(pageIndex, document.createElement('canvas'))
+  //     // Element created
+  //     canvasMap.current.set(pageIndex, element)
+  //     offscreenMap.current.set(pageIndex, document.createElement('canvas'))
 
-      // if (!canvasRenderStatus.current.has(pageIndex))
-      //   canvasRenderStatus.current.set(pageIndex, true)
+  //     // if (!canvasRenderStatus.current.has(pageIndex))
+  //     //   canvasRenderStatus.current.set(pageIndex, true)
 
-      // render page
-      console.debug(`Render trigerred at "manageCanvas" for page ${pageIndex}`)
-      renderPage(pageIndex)
-    } else {
-      // Element destroied
-      cancelRender(pageIndex)
+  //     // render page
+  //     console.debug(`Render trigerred at "manageCanvas" for page ${pageIndex}`)
+  //     renderPage(pageIndex)
+  //   } else {
+  //     // Element destroied
+  //     cancelRender(pageIndex)
 
-      // clear rendered page
-      renderedPages.current.delete(pageIndex)
+  //     // clear rendered page
+  //     renderedPages.current.delete(pageIndex)
 
-      // delete offscreen cache
-      const offscreenCanvas = offscreenMap.current.get(pageIndex)
-      if (offscreenCanvas) {
-        const ctx = offscreenCanvas.getContext('2d')
-        ctx?.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height)
+  //     // delete offscreen cache
+  //     const offscreenCanvas = offscreenMap.current.get(pageIndex)
+  //     if (offscreenCanvas) {
+  //       const ctx = offscreenCanvas.getContext('2d')
+  //       ctx?.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height)
 
-        offscreenCanvas.width = 0
-        offscreenCanvas.height = 0
-        offscreenMap.current.delete(pageIndex)
-      }
-    }
-  }
+  //       offscreenCanvas.width = 0
+  //       offscreenCanvas.height = 0
+  //       offscreenMap.current.delete(pageIndex)
+  //     }
+  //   }
+  // }
 
   // Map page index to array index.
-  const pages = useMemo(() => Array.from({ length: numPages }, (_, i) => i + 1), [numPages])
+  const pages = useMemo(() => Array.from({ length: pageNum }, (_, i) => i + 1), [pageNum])
 
   /**
    * Create canvases and divs.
@@ -252,8 +334,8 @@ export default function PDFCanvas() {
    */
   function createCanvases() {
     return pages.map((pageIndex, i) => {
-      const height = pageHeights[i]
-      const width = pageWidths[i]
+      const height = pageSizes[i]?.height ?? 0 * scale
+      const width = pageSizes[i]?.width ?? 0 * scale
       const isMounted = mountedPages.has(pageIndex)
       // const ratio = isScalingStable ? visualScale / scale : visualScale / visualScale
 
@@ -269,7 +351,11 @@ export default function PDFCanvas() {
         >
           {isMounted ? (
             <canvas
-              ref={(el) => manageCanvas(pageIndex, el)}
+              ref={(el) => {
+                canvasRegistry.registerCanvas(pageIndex, el)
+
+                if (el) requestRender(pageIndex)
+              }}
               style={{ width: '100%', height: '100%' }}
             />
           ) : (
@@ -331,57 +417,78 @@ export default function PDFCanvas() {
 
   // ========================= Listen on variable changes ========================
 
-  // Initialization: Create empty div with page height.
+  // on mountedPages change
   useEffect(() => {
     if (!pdfDocument) return
-    setNumPages(pdfDocument.numPages)
 
-    initialize()
-  }, [pdfDocument, rotation])
+    pdfLogger('Main', `mounted page: ${Array.from(mountedPages)}`, 'debug')
+    mountedPages.forEach((pageIndex) => {
+      requestRender(pageIndex)
+    })
+  }, [mountedPages, pdfDocument, requestRender])
+
+  // on scale / rotation change
+  useEffect(() => {
+    if (!pdfDocument) return
+
+    newVersion()
+
+    mountedPages.forEach((pageIndex) => {
+      requestRender(pageIndex)
+    })
+  }, [scale, rotation])
+
+  // Initialization: Create empty div with page height.
+  // useEffect(() => {
+  //   if (!pdfDocument) return
+  //   setNumPages(pdfDocument.numPages)
+
+  //   initialize()
+  // }, [pdfDocument, rotation])
 
   // Initialize IntersectionObserver
-  useEffect(() => {
-    if (!containerDiv.current) return
+  // useEffect(() => {
+  //   if (!containerDiv.current) return
 
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        // if (isScalingRef.current) return
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue
+  //   observerRef.current = new IntersectionObserver(
+  //     (entries) => {
+  //       // if (isScalingRef.current) return
+  //       for (const entry of entries) {
+  //         if (!entry.isIntersecting) continue
 
-          const element = entry.target as HTMLElement
-          const page = Number(element.dataset.page)
+  //         const element = entry.target as HTMLElement
+  //         const page = Number(element.dataset.page)
 
-          currentPageRef.current = page
-          console.log(`Current page change to page ${page}`)
+  //         currentPageRef.current = page
+  //         console.log(`Current page change to page ${page}`)
 
-          const next = new Set(mountedPages)
+  //         const next = new Set(mountedPages)
 
-          // delete invisible page
-          mountedPages.forEach((pageIndex) => {
-            if (pageIndex < page - RENDER_BUFFER_NUM || pageIndex > page + RENDER_BUFFER_NUM) {
-              next.delete(pageIndex)
-            }
-          })
+  //         // delete invisible page
+  //         mountedPages.forEach((pageIndex) => {
+  //           if (pageIndex < page - RENDER_BUFFER_NUM || pageIndex > page + RENDER_BUFFER_NUM) {
+  //             next.delete(pageIndex)
+  //           }
+  //         })
 
-          // add new visible page
-          for (let i = page - RENDER_BUFFER_NUM; i <= page + RENDER_BUFFER_NUM; i++) {
-            if (i >= 1 && i <= numPages) next.add(i)
-          }
+  //         // add new visible page
+  //         for (let i = page - RENDER_BUFFER_NUM; i <= page + RENDER_BUFFER_NUM; i++) {
+  //           if (i >= 1 && i <= numPages) next.add(i)
+  //         }
 
-          // console.debug(`Mounted page changed to: ${Array.from(next)}`)
-          setTempMountedPages(next)
-        }
-      },
-      {
-        root: containerDiv.current,
-        rootMargin: '-1200px 0px 1200px 0px', // This seems to be right, doesn't know why
-        threshold: 0.6
-      }
-    )
+  //         // console.debug(`Mounted page changed to: ${Array.from(next)}`)
+  //         setTempMountedPages(next)
+  //       }
+  //     },
+  //     {
+  //       root: containerDiv.current,
+  //       rootMargin: '-1200px 0px 1200px 0px', // This seems to be right, doesn't know why
+  //       threshold: 0.6
+  //     }
+  //   )
 
-    return () => observerRef.current?.disconnect()
-  }, [numPages])
+  //   return () => observerRef.current?.disconnect()
+  // }, [numPages])
 
   // Set scale after wheel stop (400ms later).
   // useEffect(() => {
@@ -392,129 +499,129 @@ export default function PDFCanvas() {
   // }, [tempScale])
 
   // Idle detection
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (Date.now() - lastWheelTimeRef.current > 150 && isScalingRef.current) {
-        //
-        // setIsRenderingScale(true)
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     if (Date.now() - lastWheelTimeRef.current > 150 && isScalingRef.current) {
+  //       //
+  //       // setIsRenderingScale(true)
 
-        // Save the current scale to oldScale, to keep transform smooth.
-        // console.debug(`Change old scale to `)
-        // setOldScale(scale)
-        // setIsScalingStable(false)
-        // canvasRenderStatus.current.forEach((_, key) => {
-        //   if (mountedPages.has(key)) canvasRenderStatus.current.set(key, true)
-        // })
+  //       // Save the current scale to oldScale, to keep transform smooth.
+  //       // console.debug(`Change old scale to `)
+  //       // setOldScale(scale)
+  //       // setIsScalingStable(false)
+  //       // canvasRenderStatus.current.forEach((_, key) => {
+  //       //   if (mountedPages.has(key)) canvasRenderStatus.current.set(key, true)
+  //       // })
 
-        console.debug(`Set scale to ${scale * canvasScaleRef.current}`)
-        scaleRef.current *= canvasScaleRef.current
-        setScale(scaleRef.current)
+  //       console.debug(`Set scale to ${scale * canvasScaleRef.current}`)
+  //       scaleRef.current *= canvasScaleRef.current
+  //       setScale(scaleRef.current)
 
-        // setIsScrolling(false)
-        isScalingRef.current = false
+  //       // setIsScrolling(false)
+  //       isScalingRef.current = false
 
-        if (setMountedPagesLaterRef.current) {
-          if (!isInAnimeFrameRef.current) {
-            isInAnimeFrameRef.current = true
-            // setIsAnimationFrame(true)
-            requestAnimationFrame(() => {
-              setMountedPages(new Set(tempMountedPages))
-              console.debug(`Mounted page changed to: ${Array.from(mountedPages)}`)
+  //       if (setMountedPagesLaterRef.current) {
+  //         if (!isInAnimeFrameRef.current) {
+  //           isInAnimeFrameRef.current = true
+  //           // setIsAnimationFrame(true)
+  //           requestAnimationFrame(() => {
+  //             setMountedPages(new Set(tempMountedPages))
+  //             console.debug(`Mounted page changed to: ${Array.from(mountedPages)}`)
 
-              // setIsAnimationFrame(false)
-              isInAnimeFrameRef.current = false
-            })
-          }
+  //             // setIsAnimationFrame(false)
+  //             isInAnimeFrameRef.current = false
+  //           })
+  //         }
 
-          setMountedPagesLaterRef.current = false
-        }
-      }
-    }, 100)
+  //         setMountedPagesLaterRef.current = false
+  //       }
+  //     }
+  //   }, 100)
 
-    return () => clearInterval(interval)
-  }, [])
+  //   return () => clearInterval(interval)
+  // }, [])
 
   // Set mounted page after scrolling stop (400ms later)
-  useEffect(() => {
-    if (mountTimerRef.current) clearTimeout(mountTimerRef.current)
+  // useEffect(() => {
+  //   if (mountTimerRef.current) clearTimeout(mountTimerRef.current)
 
-    mountTimerRef.current = setTimeout(() => {
-      if (!isInAnimeFrameRef.current) {
-        if (isScalingRef.current) {
-          setMountedPagesLaterRef.current = true
-        } else {
-          isInAnimeFrameRef.current = true
-          // setIsAnimationFrame(true)
-          requestAnimationFrame(() => {
-            setMountedPages(new Set(tempMountedPages))
-            console.debug(`Mounted page changed to: ${Array.from(mountedPages)}`)
+  //   mountTimerRef.current = setTimeout(() => {
+  //     if (!isInAnimeFrameRef.current) {
+  //       if (isScalingRef.current) {
+  //         setMountedPagesLaterRef.current = true
+  //       } else {
+  //         isInAnimeFrameRef.current = true
+  //         // setIsAnimationFrame(true)
+  //         requestAnimationFrame(() => {
+  //           setMountedPages(new Set(tempMountedPages))
+  //           console.debug(`Mounted page changed to: ${Array.from(mountedPages)}`)
 
-            // setIsAnimationFrame(false)
-            isInAnimeFrameRef.current = false
-          })
-        }
-        // isInAnimeFrameRef.current = true
-        // // setIsAnimationFrame(true)
-        // requestAnimationFrame(() => {
-        //   setMountedPages(new Set(tempMountedPages))
-        //   console.debug(`Mounted page changed to: ${Array.from(mountedPages)}`)
+  //           // setIsAnimationFrame(false)
+  //           isInAnimeFrameRef.current = false
+  //         })
+  //       }
+  //       // isInAnimeFrameRef.current = true
+  //       // // setIsAnimationFrame(true)
+  //       // requestAnimationFrame(() => {
+  //       //   setMountedPages(new Set(tempMountedPages))
+  //       //   console.debug(`Mounted page changed to: ${Array.from(mountedPages)}`)
 
-        //   // setIsAnimationFrame(false)
-        //   isInAnimeFrameRef.current = false
-        // })
-      }
-    }, 400)
-  }, [tempMountedPages])
+  //       //   // setIsAnimationFrame(false)
+  //       //   isInAnimeFrameRef.current = false
+  //       // })
+  //     }
+  //   }, 400)
+  // }, [tempMountedPages])
 
   // Observe all pages.
-  useEffect(() => {
-    const obs = observerRef.current
-    if (!obs || !containerDiv.current) return
+  // useEffect(() => {
+  //   const obs = observerRef.current
+  //   if (!obs || !containerDiv.current) return
 
-    const elements = containerDiv.current.querySelectorAll('.pdf-page')
-    elements.forEach((el) => obs.observe(el))
+  //   const elements = containerDiv.current.querySelectorAll('.pdf-page')
+  //   elements.forEach((el) => obs.observe(el))
 
-    return () => {
-      elements.forEach((el) => obs.unobserve(el))
-    }
-  }, [numPages, pageHeights])
+  //   return () => {
+  //     elements.forEach((el) => obs.unobserve(el))
+  //   }
+  // }, [numPages, pageHeights])
 
   // Redraw when scale and rotation change
-  useEffect(() => {
-    if (!pdfDocument) return
+  // useEffect(() => {
+  //   if (!pdfDocument) return
 
-    calculatePageSize().then(() => {
-      // setIsScalingStable(true)
-      renderedPages.current.clear()
+  //   calculatePageSize().then(() => {
+  //     // setIsScalingStable(true)
+  //     renderedPages.current.clear()
 
-      const currentPageIndex = currentPageRef.current
+  //     const currentPageIndex = currentPageRef.current
 
-      const renderOrder = [
-        // Render the visible page first
-        currentPageIndex - 1,
-        // Then the page to be visibled
-        currentPageIndex,
-        currentPageIndex - 2,
-        // Then the invisible page
-        currentPageIndex + 1,
-        currentPageIndex + 2,
-        currentPageIndex + 3,
-        currentPageIndex - 3
-      ]
+  //     const renderOrder = [
+  //       // Render the visible page first
+  //       currentPageIndex - 1,
+  //       // Then the page to be visibled
+  //       currentPageIndex,
+  //       currentPageIndex - 2,
+  //       // Then the invisible page
+  //       currentPageIndex + 1,
+  //       currentPageIndex + 2,
+  //       currentPageIndex + 3,
+  //       currentPageIndex - 3
+  //     ]
 
-      renderOrder.forEach((page) => {
-        console.debug(`Render trigerred at "useEffect" for page ${page}`)
-        renderPage(page, true)
-      })
-    })
-  }, [rotation])
+  //     renderOrder.forEach((page) => {
+  //       console.debug(`Render trigerred at "useEffect" for page ${page}`)
+  //       renderPage(page, true)
+  //     })
+  //   })
+  // }, [rotation])
 
-  useEffect(() => {
-    // setIsScalingStable(true)
-    // setCanvasScaleRatio(1)
-    canvasScaleRef.current = 1
-    setCanvasScaleRatio(canvasScaleRef.current)
-  }, [pageHeights, pageWidths])
+  // useEffect(() => {
+  //   // setIsScalingStable(true)
+  //   // setCanvasScaleRatio(1)
+  //   canvasScaleRef.current = 1
+  //   setCanvasScaleRatio(canvasScaleRef.current)
+  // }, [pageHeights, pageWidths])
 
   // Listen on zoom in/out event
   useEffect(() => {
