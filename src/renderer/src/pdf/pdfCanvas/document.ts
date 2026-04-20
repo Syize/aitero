@@ -16,7 +16,7 @@ import { pdfLogger } from '@/pdf/utils'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { useEffect, useRef, useState } from 'react'
 
-type PageSize = {
+export type PageSize = {
   width: number
   height: number
 }
@@ -59,6 +59,7 @@ export function usePDFDocument(
 
       try {
         const total = pdfDocument!.numPages
+        pdfLogger('Document', `Page num changed to ${total}`, 'debug')
         setPageNum(total)
 
         const sizes: PageSize[] = new Array(total)
@@ -76,7 +77,7 @@ export function usePDFDocument(
           }
         }
 
-        // version check（防止旧任务污染）
+        // version check
         if (cancelled || version !== versionRef.current) return
 
         setPageSizes(sizes)

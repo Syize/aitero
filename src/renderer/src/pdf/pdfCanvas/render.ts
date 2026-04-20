@@ -12,13 +12,11 @@
  *    - cancelAll()
  *    - newVersion()
  *    - getVersion()
- *
- * Progress: Finished.
  */
 
 import { pdfLogger } from '@/pdf/utils'
 import type { RenderTask } from 'pdfjs-dist'
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 export type Priority = 0 | 1 | 2
 
@@ -26,6 +24,7 @@ type QueueItem = {
   pageIndex: number
   priority: Priority
   version: number
+  force: boolean
 }
 
 type RunningItem = {
@@ -44,8 +43,9 @@ type RenderScheduler = {
 type RenderExecutor = (
   pageIndex: number,
   version: number,
+  force: boolean,
   getVersion: (pageIndex: number) => number
-) => Promise<RenderTask | undefined>
+) => Promise<RenderTask | void>
 
 export function useRenderScheduler(
   executor: RenderExecutor,
@@ -54,6 +54,8 @@ export function useRenderScheduler(
   const queueRef = useRef<QueueItem[]>([])
   const runningRef = useRef<Map<number, RunningItem>>(new Map())
   const versionRef = useRef(0)
+
+  const runNextRef = useRef<() => void>(null)
 
   // ===================== version =====================
 
@@ -71,37 +73,75 @@ export function useRenderScheduler(
     queueRef.current.sort((a, b) => a.priority - b.priority)
   }
 
-  const schedule = useCallback((pageIndex: number, priority: Priority = 1) => {
-    const version = versionRef.current
+  const schedule = useCallback(
+    (pageIndex: number, priority: Priority = 1, force: boolean = false) => {
+      const version = versionRef.current
 
-    // Is running, skip.
-    // But need to commit a new task after the version has changed?
-    if (runningRef.current.has(pageIndex)) {
-      pdfLogger('Render', `Page ${pageIndex} is already rendering`, 'debug')
-      return
-    }
+      // Is running, skip.
+      // But need to commit a new task after the version has changed?
+      if (runningRef.current.has(pageIndex)) {
+        pdfLogger('Render', `Page ${pageIndex} is already rendering, skip`, 'debug')
+        return
+      }
 
-    // Commited, update priority.
-    const existing = queueRef.current.find((t) => t.pageIndex === pageIndex)
+      // Commited, update priority.
+      const existing = queueRef.current.find((t) => t.pageIndex === pageIndex)
 
-    if (existing) {
-      existing.priority = existing.priority > priority ? priority : existing.priority
-      pdfLogger(
-        'Render',
-        `Page ${pageIndex} is already waiting to be rendered, change priority to ${existing.priority}`,
-        'debug'
-      )
-      return
-    }
+      if (existing) {
+        existing.priority = existing.priority > priority ? priority : existing.priority
+        pdfLogger(
+          'Render',
+          `Page ${pageIndex} is already waiting to be rendered, change priority to ${existing.priority}`,
+          'debug'
+        )
+        return
+      }
 
-    queueRef.current.push({ pageIndex, priority, version })
-    pdfLogger('Render', `Commit render task for page ${pageIndex}`, 'debug')
+      queueRef.current.push({ pageIndex, priority, version, force })
+      pdfLogger('Render', `Commit render task for page ${pageIndex}`, 'debug')
 
-    sortQueue()
-    runNext()
-  }, [])
+      sortQueue()
+      runNextRef.current?.()
+    },
+    []
+  )
 
   // ===================== execution =====================
+
+  const execute = useCallback(
+    async (item: QueueItem) => {
+      const { pageIndex, version, force } = item
+      // Version check
+      if (version !== versionRef.current) {
+        pdfLogger('Render', `Outdated task for page ${pageIndex}, skip`, 'debug')
+        return
+      }
+
+      try {
+        const task = await executor(pageIndex, version, force, getVersion)
+
+        if (!task) return
+
+        runningRef.current.set(pageIndex, { task, version })
+
+        await task.promise
+
+        // Version check again
+        if (version !== versionRef.current) {
+          pdfLogger('Render', `Outdated results for page ${pageIndex}, discard`, 'debug')
+          return
+        }
+      } catch (e: any) {
+        if (e?.name !== 'RenderingCancelledException') {
+          pdfLogger('Render', `Render error: ${e}`, 'error')
+        }
+      } finally {
+        runningRef.current.delete(pageIndex)
+        runNextRef.current?.()
+      }
+    },
+    [executor]
+  )
 
   const runNext = useCallback(() => {
     pdfLogger(
@@ -120,44 +160,7 @@ export function useRenderScheduler(
 
       execute(item)
     }
-  }, [])
-
-  const execute = useCallback(
-    async (item: QueueItem) => {
-      const { pageIndex, version } = item
-      // Version check
-      if (version !== versionRef.current) {
-        pdfLogger('Render', `Outdated task for page ${pageIndex}, skip`, 'debug')
-        return
-      }
-
-      try {
-        const task = await executor(pageIndex, version, getVersion)
-
-        if (!task) return
-
-        runningRef.current.set(pageIndex, { task, version })
-
-        await task.promise
-
-        // Version check again
-        if (version !== versionRef.current) {
-          pdfLogger('Render', `Outdated results for page ${pageIndex}, discard`, 'debug')
-          return
-        }
-
-        // 👉 可以在这里触发 onSuccess（如果需要）
-      } catch (e: any) {
-        if (e?.name !== 'RenderingCancelledException') {
-          pdfLogger('Render', `Render error: ${e}`, 'error')
-        }
-      } finally {
-        runningRef.current.delete(pageIndex)
-        runNext()
-      }
-    },
-    [executor, runNext]
-  )
+  }, [execute, maxConcurrency])
 
   // ===================== cancel =====================
 
@@ -173,6 +176,7 @@ export function useRenderScheduler(
 
     // remove from queue
     queueRef.current = queueRef.current.filter((t) => t.pageIndex !== pageIndex)
+    pdfLogger('Render', `Render task of page ${pageIndex} is canceled.`, 'info')
   }, [])
 
   const cancelAll = useCallback(() => {
@@ -182,9 +186,14 @@ export function useRenderScheduler(
       } catch {}
     })
 
+    pdfLogger('Render', `All render tasks are canceled.`, 'info')
     runningRef.current.clear()
     queueRef.current = []
   }, [])
+
+  useEffect(() => {
+    runNextRef.current = runNext
+  }, [runNext])
 
   return {
     schedule,

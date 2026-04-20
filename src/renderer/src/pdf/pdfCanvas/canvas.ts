@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useRef } from 'react'
+import { pdfLogger } from '../utils'
 
 type CanvasRegistry = {
   registerCanvas: (pageIndex: number, el: HTMLCanvasElement | null) => void
@@ -35,11 +36,13 @@ export function useCanvasRegistry(): CanvasRegistry {
     if (el) {
       // mount
       canvasMap.current.set(pageIndex, el)
+      pdfLogger('Canvas', 'Canvas created', 'debug')
 
-      // 确保 offscreen 存在（延迟创建也可以，但这里简单处理）
+      // Create offscreen cavans.
       if (!offscreenMap.current.has(pageIndex)) {
         offscreenMap.current.set(pageIndex, document.createElement('canvas'))
       }
+      pdfLogger('Canvas', 'Offscreen canvas created', 'debug')
     } else {
       // unmount
       unregisterCanvas(pageIndex)
@@ -68,6 +71,7 @@ export function useCanvasRegistry(): CanvasRegistry {
   const unregisterCanvas = useCallback((pageIndex: number) => {
     // remove visible
     canvasMap.current.delete(pageIndex)
+    pdfLogger('Canvas', 'Canvas removed', 'debug')
 
     // Clear offscreen, release GPU resource.
     const offscreen = offscreenMap.current.get(pageIndex)
@@ -80,6 +84,8 @@ export function useCanvasRegistry(): CanvasRegistry {
 
       offscreenMap.current.delete(pageIndex)
     }
+
+    pdfLogger('Canvas', 'Offscreen canvas removed', 'debug')
   }, [])
 
   const unregisterAll = useCallback(() => {
