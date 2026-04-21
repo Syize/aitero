@@ -49,11 +49,6 @@ export default function PDFCanvas() {
         return
       }
 
-      if (pageSizes.length == 0) {
-        pdfLogger('Render', `Page size calculation not finish, skip`, 'debug')
-        return
-      }
-
       const canvas = canvasRegistry.getCanvas(pageIndex)
       if (!canvas) {
         pdfLogger('Render', `Canvas doesn't exist for page ${pageIndex}, skip`, 'debug')
@@ -70,9 +65,10 @@ export default function PDFCanvas() {
       const page = await pdfDocument.getPage(pageIndex)
       const offscreen = canvasRegistry.getOffscreenCanvas(pageIndex)
       const dpr = window.devicePixelRatio || 1
+      const viewport = page.getViewport({ scale, rotation })
 
-      offscreen.height = Math.floor(pageSizes[pageIndex - 1].height * scale * dpr)
-      offscreen.width = Math.floor(pageSizes[pageIndex - 1].width * scale * dpr)
+      offscreen.height = Math.floor(viewport.height * dpr)
+      offscreen.width = Math.floor(viewport.width * dpr)
 
       const offscreenCtx = offscreen.getContext('2d')!
       offscreenCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -87,28 +83,36 @@ export default function PDFCanvas() {
       })
 
       // Copied rendered results to onscreen canvas
-      task.promise.then(() => {
-        if (version !== getVersion(pageIndex)) {
-          pdfLogger('Render', `Outdated results for page ${pageIndex}, skip`, 'debug')
-          return
-        }
+      task.promise
+        .then(() => {
+          if (version !== getVersion(pageIndex)) {
+            pdfLogger('Render', `Outdated results for page ${pageIndex}, skip`, 'debug')
+            return
+          }
 
-        const visible = canvasRegistry.getCanvas(pageIndex)
-        if (!visible) {
-          pdfLogger('Render', `Canvas doesn't exist for page ${pageIndex}, skip`, 'debug')
-          return
-        }
+          const visible = canvasRegistry.getCanvas(pageIndex)
+          if (!visible) {
+            pdfLogger('Render', `Canvas doesn't exist for page ${pageIndex}, skip`, 'debug')
+            return
+          }
 
-        visible.width = offscreen.width
-        visible.height = offscreen.height
-        visible.getContext('2d')!.drawImage(offscreen, 0, 0)
+          visible.width = offscreen.width
+          visible.height = offscreen.height
+          visible.getContext('2d')!.drawImage(offscreen, 0, 0)
 
-        isCanvasRenderedMap.current.add(pageIndex)
-      })
+          isCanvasRenderedMap.current.add(pageIndex)
+
+          pdfLogger('Render', `Page rendered with scale=${scale}, rotation=${rotation}`)
+        })
+        .catch((e) => {
+          if (e?.name !== 'RenderingCancelledException') {
+            pdfLogger('Render', `Failed to copy render results: ${e}`, 'error')
+          }
+        })
 
       return task
     },
-    [canvasRegistry, pdfDocument, scale, rotation, pageSizes]
+    [canvasRegistry, pdfDocument, scale, rotation]
   )
 
   const { schedule, newVersion, cancel } = useRenderScheduler(renderExecutor)
@@ -129,7 +133,12 @@ export default function PDFCanvas() {
   // =========================== Function definition ===============================
 
   // Map page index to array index.
-  const pages = useMemo(() => Array.from({ length: pageNum }, (_, i) => i + 1), [pageNum])
+  const pages = useMemo(() => {
+    if (pageNum !== pageSizes.length) {
+      pdfLogger('Main', 'pageNum and pageSizes is not euqal.', 'debug')
+      return []
+    } else return Array.from({ length: pageNum }, (_, i) => i + 1)
+  }, [pageNum, pageSizes])
 
   /**
    * Create canvases and divs.
@@ -197,7 +206,6 @@ export default function PDFCanvas() {
     pdfLogger('Main', `mounted page: ${Array.from(mountedPages)}`, 'debug')
   }, [mountedPages])
 
-  // on scale / rotation change
   useEffect(() => {
     if (!pdfDocument) return
 
@@ -206,7 +214,7 @@ export default function PDFCanvas() {
     mountedPages.forEach((pageIndex) => {
       stableRequestRender(pageIndex)
     })
-  }, [scale, rotation])
+  }, [scale])
 
   // ===============================================================================
 

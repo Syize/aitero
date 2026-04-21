@@ -172,11 +172,11 @@ export function useRenderScheduler(
         running.task.cancel()
       } catch {}
       runningRef.current.delete(pageIndex)
+      pdfLogger('Render', `Render task of page ${pageIndex} is canceled.`, 'info')
     }
 
     // remove from queue
     queueRef.current = queueRef.current.filter((t) => t.pageIndex !== pageIndex)
-    pdfLogger('Render', `Render task of page ${pageIndex} is canceled.`, 'info')
   }, [])
 
   const cancelAll = useCallback(() => {
