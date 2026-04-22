@@ -26,7 +26,7 @@ type CanvasRegistry = {
   unregisterAll: () => void
 }
 
-export function useCanvasRegistry(): CanvasRegistry {
+export function useCanvasRegistry(notClearOffscreenFunc: () => boolean): CanvasRegistry {
   const canvasMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
   const offscreenMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
 
@@ -41,8 +41,9 @@ export function useCanvasRegistry(): CanvasRegistry {
       // Create offscreen cavans.
       if (!offscreenMap.current.has(pageIndex)) {
         offscreenMap.current.set(pageIndex, document.createElement('canvas'))
+        pdfLogger('Canvas', 'Offscreen canvas created', 'debug')
       }
-      pdfLogger('Canvas', 'Offscreen canvas created', 'debug')
+      // pdfLogger('Canvas', 'Offscreen canvas created', 'debug')
     } else {
       // unmount
       unregisterCanvas(pageIndex)
@@ -74,18 +75,34 @@ export function useCanvasRegistry(): CanvasRegistry {
     pdfLogger('Canvas', 'Canvas removed', 'debug')
 
     // Clear offscreen, release GPU resource.
-    const offscreen = offscreenMap.current.get(pageIndex)
-    if (offscreen) {
-      const ctx = offscreen.getContext('2d')
-      ctx?.clearRect(0, 0, offscreen.width, offscreen.height)
+    // Why we need this?
+    // Because react WILL re-create canvas when scaling, but we don't want to rerender PDF.
+    // So keep old offscreen canvas, use old results.
+    if (!notClearOffscreenFunc()) {
+      const offscreen = offscreenMap.current.get(pageIndex)
+      if (offscreen) {
+        const ctx = offscreen.getContext('2d')
+        ctx?.clearRect(0, 0, offscreen.width, offscreen.height)
 
-      offscreen.width = 0
-      offscreen.height = 0
+        offscreen.width = 0
+        offscreen.height = 0
 
-      offscreenMap.current.delete(pageIndex)
+        offscreenMap.current.delete(pageIndex)
+      }
+      pdfLogger('Canvas', 'Offscreen canvas removed', 'debug')
     }
+    // const offscreen = offscreenMap.current.get(pageIndex)
+    // if (offscreen) {
+    //   const ctx = offscreen.getContext('2d')
+    //   ctx?.clearRect(0, 0, offscreen.width, offscreen.height)
 
-    pdfLogger('Canvas', 'Offscreen canvas removed', 'debug')
+    //   offscreen.width = 0
+    //   offscreen.height = 0
+
+    //   offscreenMap.current.delete(pageIndex)
+    // }
+
+    // pdfLogger('Canvas', 'Offscreen canvas removed', 'debug')
   }, [])
 
   const unregisterAll = useCallback(() => {

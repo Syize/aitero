@@ -11,6 +11,8 @@
  *    - currentPage
  *    - mountedPages
  *    - registerPage()
+ *    - getIsProgramScroll()
+ *    - setIsProgramScroll()
  */
 
 import { pdfLogger } from '@/pdf/utils'
@@ -20,6 +22,8 @@ type ViewportManager = {
   currentPage: number
   mountedPages: Set<number>
   registerPage: (pageIndex: number, el: HTMLDivElement | null) => void
+  getIsProgramScroll: () => boolean
+  setIsProgramScroll: (value: boolean) => void
 }
 
 export function useViewportManager(
@@ -35,6 +39,7 @@ export function useViewportManager(
   const lastCurrentPageRef = useRef<number>(currentPage)
   const isScrollingRef = useRef(false)
   const lastScrollTimeRef = useRef(0)
+  const isProgramScrollRef = useRef(false)
 
   const pendingPagesRef = useRef<Set<number>>(new Set())
   const rafLockRef = useRef(false)
@@ -91,6 +96,12 @@ export function useViewportManager(
     }
   }, [containerRef])
 
+  const getIsProgramScroll = useCallback(() => isProgramScrollRef.current, [])
+
+  const setIsProgramScroll = useCallback((value: boolean) => {
+    isProgramScrollRef.current = value
+  }, [])
+
   function scheduleUpdate(nextPages: Set<number>, page: number) {
     pendingPagesRef.current = nextPages
 
@@ -111,6 +122,10 @@ export function useViewportManager(
    * @returns void
    */
   function handleScrollEvent() {
+    if (isProgramScrollRef.current) {
+      pdfLogger('Viewport', 'Ignore program scroll', 'debug')
+      return
+    }
     isScrollingRef.current = true
     lastScrollTimeRef.current = Date.now()
   }
@@ -132,8 +147,12 @@ export function useViewportManager(
     const interval = setInterval(() => {
       if (isScrollingRef.current && Date.now() - lastScrollTimeRef.current > 120) {
         isScrollingRef.current = false
-        compulteCurrentPage()
-        pdfLogger('Viewport', 'Scrolling stoped.', 'debug')
+        if (!isProgramScrollRef.current) {
+          compulteCurrentPage()
+          pdfLogger('Viewport', 'Scrolling stoped.', 'debug')
+        }
+        // compulteCurrentPage()
+        // pdfLogger('Viewport', 'Scrolling stoped.', 'debug')
       }
     }, 100)
 
@@ -176,6 +195,8 @@ export function useViewportManager(
   return {
     mountedPages,
     currentPage,
-    registerPage
+    registerPage,
+    getIsProgramScroll,
+    setIsProgramScroll
   }
 }

@@ -28,13 +28,23 @@ export default function PDFCanvas() {
   const { scale, rotation, document: pdfDocument } = state
 
   const containerDiv = useRef<HTMLDivElement>(null)
+  const transformContainerDiv = useRef<HTMLDivElement>(null)
   const isCanvasRenderedMap = useRef<Set<number>>(new Set())
 
   // Custom hook
   const { pageNum, pageSizes, isLoading } = usePDFDocument(pdfDocument, rotation)
-  const { currentPage, mountedPages, registerPage } = useViewportManager(containerDiv, pageNum)
-  const canvasRegistry = useCanvasRegistry()
-  const { visualScale } = useScaleHandler(containerDiv, scale, setScale)
+  const { currentPage, mountedPages, registerPage, setIsProgramScroll, getIsProgramScroll } =
+    useViewportManager(containerDiv, pageNum)
+  const canvasRegistry = useCanvasRegistry(getIsProgramScroll)
+  const { visualScale } = useScaleHandler(
+    transformContainerDiv,
+    containerDiv,
+    scale,
+    currentPage,
+    pageSizes,
+    setScale,
+    setIsProgramScroll
+  )
 
   // Render function used by custom hook
   const renderExecutor = useCallback(
@@ -156,8 +166,8 @@ export default function PDFCanvas() {
           className="pdf-page bg-white shadow"
           data-page={pageIndex}
           style={{
-            height: height * visualScale,
-            width: width * visualScale
+            height: height,
+            width: width
           }}
           ref={(el) => {
             registerPage(pageIndex, el)
@@ -170,7 +180,7 @@ export default function PDFCanvas() {
 
                 if (el) stableRequestRender(pageIndex)
                 else {
-                  isCanvasRenderedMap.current.delete(pageIndex)
+                  if (!getIsProgramScroll()) isCanvasRenderedMap.current.delete(pageIndex)
                   cancel(pageIndex)
                 }
               }}
@@ -210,6 +220,7 @@ export default function PDFCanvas() {
     if (!pdfDocument) return
 
     newVersion()
+    isCanvasRenderedMap.current.clear()
 
     mountedPages.forEach((pageIndex) => {
       stableRequestRender(pageIndex)
@@ -226,7 +237,15 @@ export default function PDFCanvas() {
           <div>Loading PDF...</div>
         </div>
       ) : (
-        <div className="flex flex-col items-center w-full gap-4">
+        <div
+          ref={transformContainerDiv}
+          style={{
+            transform: `scale(1)`,
+            transformOrigin: '0 0',
+            willChange: 'transform'
+          }}
+          className="flex flex-col items-center w-full gap-4"
+        >
           <div style={{ height: '50px', width: '100%' }} />
           {createCanvases()}
         </div>
