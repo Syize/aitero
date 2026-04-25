@@ -28,16 +28,19 @@ export default function PDFCanvas() {
   const { scale, rotation, document: pdfDocument } = state
 
   const containerDiv = useRef<HTMLDivElement>(null)
-  const transformContainerDiv = useRef<HTMLDivElement>(null)
+  const canvasContainerDiv = useRef<HTMLDivElement>(null)
   const isCanvasRenderedMap = useRef<Set<number>>(new Set())
+  const canvasInstanceMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
 
   // Custom hook
   const { pageNum, pageSizes, isLoading } = usePDFDocument(pdfDocument, rotation)
-  const { currentPage, mountedPages, registerPage, setIsProgramScroll, getIsProgramScroll } =
-    useViewportManager(containerDiv, pageNum)
-  const canvasRegistry = useCanvasRegistry(getIsProgramScroll)
-  const { visualScale } = useScaleHandler(
-    transformContainerDiv,
+  const { currentPage, mountedPages, registerPage, setIsProgramScroll } = useViewportManager(
+    containerDiv,
+    pageNum
+  )
+  const canvasRegistry = useCanvasRegistry()
+  const { visualScale, resetVisualScale } = useScaleHandler(
+    canvasContainerDiv,
     containerDiv,
     scale,
     currentPage,
@@ -150,6 +153,37 @@ export default function PDFCanvas() {
     } else return Array.from({ length: pageNum }, (_, i) => i + 1)
   }, [pageNum, pageSizes])
 
+  const createCanvas = useEffectEvent(
+    useCallback(
+      (el: HTMLCanvasElement | null, pageIndex: number) => {
+        const isMounted = mountedPages.has(pageIndex)
+        canvasRegistry.registerCanvas(pageIndex, el, !isMounted)
+
+        if (el) {
+          const existingInstance = canvasInstanceMap.current.get(pageIndex)
+
+          if (existingInstance === el && isCanvasRenderedMap.current.has(pageIndex)) {
+            pdfLogger('Main', 'Rebind cached canvas, skip', 'debug')
+            return
+          }
+
+          canvasInstanceMap.current.set(pageIndex, el)
+
+          stableRequestRender(pageIndex)
+        } else {
+          if (!isMounted) {
+            canvasInstanceMap.current.delete(pageIndex)
+            isCanvasRenderedMap.current.delete(pageIndex)
+            cancel(pageIndex)
+          } else {
+            pdfLogger('Main', 'Unbind canvas temporarily, keep cached canvas', 'debug')
+          }
+        }
+      },
+      [mountedPages]
+    )
+  )
+
   /**
    * Create canvases and divs.
    * @returns JSX.Element[]
@@ -166,8 +200,8 @@ export default function PDFCanvas() {
           className="pdf-page bg-white shadow"
           data-page={pageIndex}
           style={{
-            height: height,
-            width: width
+            height: height * visualScale,
+            width: width * visualScale
           }}
           ref={(el) => {
             registerPage(pageIndex, el)
@@ -176,13 +210,7 @@ export default function PDFCanvas() {
           {isMounted ? (
             <canvas
               ref={(el) => {
-                canvasRegistry.registerCanvas(pageIndex, el)
-
-                if (el) stableRequestRender(pageIndex)
-                else {
-                  if (!getIsProgramScroll()) isCanvasRenderedMap.current.delete(pageIndex)
-                  cancel(pageIndex)
-                }
+                createCanvas(el, pageIndex)
               }}
               style={{ width: '100%', height: '100%' }}
             />
@@ -227,10 +255,28 @@ export default function PDFCanvas() {
     })
   }, [scale])
 
+  useEffect(() => {
+    if (!pdfDocument) return
+
+    newVersion()
+    isCanvasRenderedMap.current.clear()
+  }, [rotation])
+
+  // Reset visual scale after opening new PDF
+  useEffect(() => {
+    if (!pdfDocument) return
+
+    resetVisualScale(1.2)
+  }, [pdfDocument])
+
   // ===============================================================================
 
   return (
-    <div ref={containerDiv} className="pdf-viewer relative w-full h-full overflow-auto">
+    <div
+      ref={containerDiv}
+      className="pdf-viewer relative w-full h-full overflow-auto"
+      style={{ overflowX: 'auto' }} // Fix bug: horizontal scroll bar not show
+    >
       {isLoading ? (
         <div className="loading-overlay">
           <div className="loading-spinner"></div>
@@ -238,13 +284,9 @@ export default function PDFCanvas() {
         </div>
       ) : (
         <div
-          ref={transformContainerDiv}
-          style={{
-            transform: `scale(1)`,
-            transformOrigin: '0 0',
-            willChange: 'transform'
-          }}
-          className="flex flex-col items-center w-full gap-4"
+          ref={canvasContainerDiv}
+          className="flex flex-col items-start gap-4"
+          style={{ width: 'max-content' }}
         >
           <div style={{ height: '50px', width: '100%' }} />
           {createCanvases()}
