@@ -1,0 +1,3 @@
+[submodule "reference/pdf_viewer"]
+	path = reference/pdf_viewer
+	url = git@github.com:Syize/leed_pdf_viewer.git
