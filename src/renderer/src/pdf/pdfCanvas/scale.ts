@@ -14,6 +14,7 @@ import { PageSize } from './document'
 
 type ScaleHandler = {
   visualScale: number
+  isScaling: boolean
   resetVisualScale: (scale: number) => void
 }
 
@@ -27,6 +28,7 @@ export function useScaleHandler(
   setIsProgramScroll: (value: boolean) => void
 ): ScaleHandler {
   const [visualScale, setVisualScale] = useState<number>(1)
+  const [isScaling, setIsScaling] = useState(false)
   const visualScaleRef = useRef(visualScale)
 
   const isScalingRef = useRef(false)
@@ -52,6 +54,8 @@ export function useScaleHandler(
   const resetVisualScale = useCallback((scale: number) => {
     setVisualScale(scale)
     visualScaleRef.current = scale
+    isScalingRef.current = false
+    setIsScaling(false)
   }, [])
 
   /**
@@ -120,6 +124,7 @@ export function useScaleHandler(
       })
       lastWheelTimeRef.current = Date.now()
       isScalingRef.current = true
+      setIsScaling(true)
     })
   }, [])
 
@@ -143,6 +148,7 @@ export function useScaleHandler(
         setScale(visualScaleRef.current)
 
         isScalingRef.current = false
+        setIsScaling(false)
         setIsProgramScroll(false)
       }
     }, 100)
@@ -182,5 +188,5 @@ export function useScaleHandler(
     }
   }, [pageSizes])
 
-  return { visualScale, resetVisualScale }
+  return { visualScale, isScaling, resetVisualScale }
 }

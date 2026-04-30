@@ -1,9 +1,12 @@
+import { TextLayer as PDFJSTextLayer } from 'pdfjs-dist'
+import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef } from 'react'
 import './pdfCanvas.css'
 import { useCanvasRegistry } from './pdfCanvas/canvas'
 import { usePDFDocument } from './pdfCanvas/document'
 import { Priority, useRenderScheduler } from './pdfCanvas/render'
 import { useScaleHandler } from './pdfCanvas/scale'
+import { TextLayerHelpers, useTextLayer } from './pdfCanvas/textLayer'
 import { useViewportManager } from './pdfCanvas/viewport'
 import { usePDFContext } from './pdfState'
 import { pdfLogger } from './utils'
@@ -31,15 +34,91 @@ export default function PDFCanvas() {
   const canvasContainerDiv = useRef<HTMLDivElement>(null)
   const isCanvasRenderedMap = useRef<Set<number>>(new Set())
   const canvasInstanceMap = useRef<Map<number, HTMLCanvasElement>>(new Map())
+  const textLayerInstanceMap = useRef<Map<number, HTMLDivElement>>(new Map())
 
   // Custom hook
   const { pageNum, pageSizes, isLoading } = usePDFDocument(pdfDocument, rotation)
-  const { currentPage, mountedPages, registerPage, setIsProgramScroll } = useViewportManager(
-    containerDiv,
-    pageNum
-  )
+  const { currentPage, mountedPages, registerPage, isProgramScroll, setIsProgramScroll } =
+    useViewportManager(containerDiv, pageNum)
   const canvasRegistry = useCanvasRegistry()
-  const { visualScale, resetVisualScale } = useScaleHandler(
+
+  // Executor
+  const renderTextLayerExecutor = useCallback(
+    async (
+      pageIndex: number,
+      version: number,
+      force: boolean,
+      getVersion: (pageIndex: number) => number,
+      helpers: TextLayerHelpers
+    ) => {
+      if (!pdfDocument) {
+        pdfLogger('TextLayer', 'PDF not ready, skip text layer render', 'debug')
+        return
+      }
+
+      const root = helpers.getTextLayer(pageIndex)
+      if (!root) {
+        pdfLogger('TextLayer', `Text layer root doesn't exist for page ${pageIndex}, skip`, 'debug')
+        return
+      }
+
+      if (helpers.isRendered(pageIndex) && !force) {
+        pdfLogger('TextLayer', `No need to rerender text layer for page ${pageIndex}`, 'debug')
+        return
+      }
+
+      let textContent = helpers.getTextContent(pageIndex)
+      if (!textContent || force) {
+        const page = await pdfDocument.getPage(pageIndex)
+        textContent = await page.getTextContent()
+
+        if (version !== getVersion(pageIndex)) {
+          pdfLogger('TextLayer', `Outdated text content for page ${pageIndex}, discard`, 'debug')
+          return
+        }
+
+        helpers.setTextContent(pageIndex, textContent)
+      }
+
+      helpers.clearRenderedTextLayer(pageIndex)
+
+      const page = await pdfDocument.getPage(pageIndex)
+      if (version !== getVersion(pageIndex)) {
+        pdfLogger('TextLayer', `Outdated text layer task for page ${pageIndex}, skip`, 'debug')
+        return
+      }
+
+      const viewport = page.getViewport({ scale, rotation })
+      const textLayer = new PDFJSTextLayer({
+        textContentSource: textContent,
+        container: root,
+        viewport
+      })
+
+      helpers.setRenderInstance(pageIndex, textLayer)
+      await textLayer.render()
+
+      if (version !== getVersion(pageIndex)) {
+        textLayer.cancel()
+        helpers.setRenderInstance(pageIndex, null)
+        helpers.unmarkRendered(pageIndex)
+        return
+      }
+
+      helpers.markRendered(pageIndex)
+      pdfLogger('TextLayer', `Text layer rendered for page ${pageIndex}`, 'debug')
+    },
+    [pdfDocument, scale, rotation]
+  )
+  const {
+    registerTextLayer,
+    scheduleTextLayerTask,
+    cancelTextLayerTask,
+    clearRenderedTextLayer,
+    // clearAllTextLayers,
+    newTextLayerVersion
+  } = useTextLayer(renderTextLayerExecutor)
+  const { visualScale, isScaling, resetVisualScale } = useScaleHandler(
     canvasContainerDiv,
     containerDiv,
     scale,
@@ -50,7 +129,7 @@ export default function PDFCanvas() {
   )
 
   // Render function used by custom hook
-  const renderExecutor = useCallback(
+  const renderCanvasExecutor = useCallback(
     async (
       pageIndex: number,
       version: number,
@@ -68,12 +147,12 @@ export default function PDFCanvas() {
         return
       }
 
-      pdfLogger('Render', `Render page ${pageIndex}`, 'debug')
-
       if (isCanvasRenderedMap.current.has(pageIndex) && !force) {
         pdfLogger('Render', `No need to rerender page ${pageIndex}`, 'debug')
         return Promise.resolve()
       }
+
+      pdfLogger('Render', `Render page ${pageIndex}`, 'debug')
 
       const page = await pdfDocument.getPage(pageIndex)
       const offscreen = canvasRegistry.getOffscreenCanvas(pageIndex)
@@ -128,18 +207,31 @@ export default function PDFCanvas() {
     [canvasRegistry, pdfDocument, scale, rotation]
   )
 
-  const { schedule, newVersion, cancel } = useRenderScheduler(renderExecutor)
+  const { scheduleRenderTask, newRenderVersion, cancelRenderTask } =
+    useRenderScheduler(renderCanvasExecutor)
 
   // =========================== Utility functions =================================
 
-  const requestRender = useCallback(
-    (pageIndex: number) => {
-      schedule(pageIndex, computePriority(pageIndex, currentPage))
-    },
-    [currentPage]
+  const requestRenderCanvas = useEffectEvent(
+    useCallback(
+      (pageIndex: number) => {
+        scheduleRenderTask(pageIndex, computePriority(pageIndex, currentPage))
+      },
+      [currentPage]
+    )
   )
 
-  const stableRequestRender = useEffectEvent(requestRender)
+  const requestRenderTextLayer = useEffectEvent(
+    useCallback(
+      (pageIndex: number, force: boolean = false) => {
+        scheduleTextLayerTask(pageIndex, computePriority(pageIndex, currentPage), force)
+      },
+      [currentPage]
+    )
+  )
+
+  const getMountedPages = useEffectEvent(useCallback(() => mountedPages, [mountedPages]))
+  const getPDFDocument = useEffectEvent(useCallback(() => pdfDocument, [pdfDocument]))
 
   // ===============================================================================
 
@@ -169,18 +261,55 @@ export default function PDFCanvas() {
 
           canvasInstanceMap.current.set(pageIndex, el)
 
-          stableRequestRender(pageIndex)
+          requestRenderCanvas(pageIndex)
         } else {
           if (!isMounted) {
             canvasInstanceMap.current.delete(pageIndex)
             isCanvasRenderedMap.current.delete(pageIndex)
-            cancel(pageIndex)
+            cancelRenderTask(pageIndex)
           } else {
             pdfLogger('Main', 'Unbind canvas temporarily, keep cached canvas', 'debug')
           }
         }
       },
       [mountedPages]
+    )
+  )
+
+  const createTextLayer = useEffectEvent(
+    useCallback(
+      (el: HTMLDivElement | null, pageIndex: number) => {
+        const isMounted = mountedPages.has(pageIndex)
+        registerTextLayer(pageIndex, el, !isMounted)
+
+        if (el) {
+          const existingInstance = textLayerInstanceMap.current.get(pageIndex)
+
+          if (existingInstance === el) {
+            pdfLogger('TextLayer', 'Rebind cached text layer root, skip', 'debug')
+            return
+          }
+
+          textLayerInstanceMap.current.set(pageIndex, el)
+          requestRenderTextLayer(pageIndex)
+        } else {
+          if (!isMounted) {
+            textLayerInstanceMap.current.delete(pageIndex)
+            cancelTextLayerTask(pageIndex)
+            clearRenderedTextLayer(pageIndex)
+          } else {
+            pdfLogger('TextLayer', 'Unbind text layer root temporarily, keep cached root', 'debug')
+          }
+        }
+      },
+      [
+        mountedPages,
+        currentPage,
+        registerTextLayer,
+        scheduleTextLayerTask,
+        cancelTextLayerTask,
+        clearRenderedTextLayer
+      ]
     )
   )
 
@@ -193,6 +322,11 @@ export default function PDFCanvas() {
       const height = pageSizes[i]?.height ?? 0
       const width = pageSizes[i]?.width ?? 0
       const isMounted = mountedPages.has(pageIndex)
+      const isSelectionDisabled = isScaling || isProgramScroll
+      const textLayerScaleStyle = {
+        '--scale-factor': String(scale),
+        '--user-unit': '1'
+      } as CSSProperties
 
       return (
         <div
@@ -207,27 +341,33 @@ export default function PDFCanvas() {
             registerPage(pageIndex, el)
           }}
         >
-          {isMounted ? (
-            <canvas
-              ref={(el) => {
-                createCanvas(el, pageIndex)
-              }}
-              style={{ width: '100%', height: '100%' }}
-            />
-          ) : (
-            <div
-              style={{
-                height: '100%',
-                width: '100%',
-                background: '#f3f4f6',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              <div className="animate-pulse text-gray-400">Loading...</div>
-            </div>
-          )}
+          <div className="pdf-page-content" style={textLayerScaleStyle}>
+            {isMounted ? (
+              <>
+                <div className="pdf-canvas-layer">
+                  <canvas
+                    ref={(el) => {
+                      createCanvas(el, pageIndex)
+                    }}
+                    className="pdf-page-canvas"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                </div>
+                <div
+                  ref={(el) => {
+                    createTextLayer(el, pageIndex)
+                  }}
+                  className={`pdf-text-layer textLayer${isSelectionDisabled ? ' selection-disabled' : ''}`}
+                  data-page={pageIndex}
+                  aria-hidden="true"
+                />
+              </>
+            ) : (
+              <div className="pdf-page-placeholder">
+                <div className="animate-pulse text-gray-400">Loading...</div>
+              </div>
+            )}
+          </div>
         </div>
       )
     })
@@ -239,35 +379,61 @@ export default function PDFCanvas() {
 
   // Useless effect to print logs.
   useEffect(() => {
-    if (!pdfDocument) return
+    if (!getPDFDocument()) return
 
     pdfLogger('Main', `mounted page: ${Array.from(mountedPages)}`, 'debug')
   }, [mountedPages])
 
   useEffect(() => {
-    if (!pdfDocument) return
+    if (!(isScaling || isProgramScroll)) return
 
-    newVersion()
-    isCanvasRenderedMap.current.clear()
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return
 
-    mountedPages.forEach((pageIndex) => {
-      stableRequestRender(pageIndex)
-    })
-  }, [scale])
+    selection.removeAllRanges()
+  }, [isScaling, isProgramScroll])
 
   useEffect(() => {
-    if (!pdfDocument) return
+    if (!getPDFDocument()) return
 
-    newVersion()
+    newRenderVersion()
     isCanvasRenderedMap.current.clear()
+    newTextLayerVersion()
+
+    getMountedPages().forEach((pageIndex) => {
+      requestRenderCanvas(pageIndex)
+      requestRenderTextLayer(pageIndex)
+    })
+  }, [scale]) // No need to depende on mountedPages and functions.
+
+  useEffect(() => {
+    if (!getPDFDocument()) return
+
+    newRenderVersion()
+    isCanvasRenderedMap.current.clear()
+    newTextLayerVersion()
+
+    getMountedPages().forEach((pageIndex) => {
+      requestRenderCanvas(pageIndex)
+      requestRenderTextLayer(pageIndex)
+    })
   }, [rotation])
 
   // Reset visual scale after opening new PDF
   useEffect(() => {
     if (!pdfDocument) return
 
+    newTextLayerVersion()
     resetVisualScale(1.2)
+    // No need to explicitly request render.
+    // This will be handled by react.
   }, [pdfDocument])
+
+  // useEffect(() => {
+  //   return () => {
+  //     clearAllRenderedTextLayers()
+  //   }
+  // }, [])
 
   // ===============================================================================
 

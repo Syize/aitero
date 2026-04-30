@@ -10,7 +10,7 @@
  *    - getCanvas()
  *    - getOffscreenCanvas()
  *    - unregisterCanvas()
- *    - unregisterAll()
+ *    - unregisterAllCanvas()
  *
  * Progress: Finished.
  */
@@ -23,7 +23,7 @@ type CanvasRegistry = {
   getCanvas: (pageIndex: number) => HTMLCanvasElement | null
   getOffscreenCanvas: (pageIndex: number) => HTMLCanvasElement
   unregisterCanvas: (pageIndex: number, isClearCache: boolean) => void
-  unregisterAll: () => void
+  unregisterAllCanvas: () => void
 }
 
 export function useCanvasRegistry(): CanvasRegistry {
@@ -94,21 +94,9 @@ export function useCanvasRegistry(): CanvasRegistry {
       }
       pdfLogger('Canvas', 'Offscreen canvas removed', 'debug')
     }
-    // const offscreen = offscreenMap.current.get(pageIndex)
-    // if (offscreen) {
-    //   const ctx = offscreen.getContext('2d')
-    //   ctx?.clearRect(0, 0, offscreen.width, offscreen.height)
-
-    //   offscreen.width = 0
-    //   offscreen.height = 0
-
-    //   offscreenMap.current.delete(pageIndex)
-    // }
-
-    // pdfLogger('Canvas', 'Offscreen canvas removed', 'debug')
   }, [])
 
-  const unregisterAll = useCallback(() => {
+  const unregisterAllCanvas = useCallback(() => {
     canvasMap.current.clear()
 
     offscreenMap.current.forEach((canvas) => {
@@ -129,6 +117,6 @@ export function useCanvasRegistry(): CanvasRegistry {
     getCanvas,
     getOffscreenCanvas,
     unregisterCanvas,
-    unregisterAll
+    unregisterAllCanvas
   }
 }

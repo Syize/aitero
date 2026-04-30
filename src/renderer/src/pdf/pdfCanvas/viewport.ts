@@ -22,6 +22,7 @@ type ViewportManager = {
   currentPage: number
   mountedPages: Set<number>
   registerPage: (pageIndex: number, el: HTMLDivElement | null) => void
+  isProgramScroll: boolean
   getIsProgramScroll: () => boolean
   setIsProgramScroll: (value: boolean) => void
 }
@@ -33,6 +34,7 @@ export function useViewportManager(
 ): ViewportManager {
   const [mountedPages, setMountedPages] = useState<Set<number>>(new Set())
   const [currentPage, setCurrentPage] = useState(1)
+  const [isProgramScroll, setIsProgramScrollState] = useState(false)
 
   const pageMapRef = useRef<Map<number, HTMLDivElement>>(new Map())
   const currentPageRef = useRef<number>(currentPage)
@@ -100,6 +102,7 @@ export function useViewportManager(
 
   const setIsProgramScroll = useCallback((value: boolean) => {
     isProgramScrollRef.current = value
+    setIsProgramScrollState(value)
   }, [])
 
   function scheduleUpdate(nextPages: Set<number>, page: number) {
@@ -196,6 +199,7 @@ export function useViewportManager(
     mountedPages,
     currentPage,
     registerPage,
+    isProgramScroll,
     getIsProgramScroll,
     setIsProgramScroll
   }

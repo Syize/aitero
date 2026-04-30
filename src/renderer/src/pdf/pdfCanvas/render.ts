@@ -7,16 +7,16 @@
  *    5. Only manage render task. Render is finished by outer function.
  *
  * Interface
- *    - schedule()
- *    - cancel()
- *    - cancelAll()
- *    - newVersion()
- *    - getVersion()
+ *    - scheduleRenderTask()
+ *    - cancelRenderTask()
+ *    - cancelAllRenderTask()
+ *    - newRenderVersion()
+ *    - getRenderVersion()
  */
 
 import { pdfLogger } from '@/pdf/utils'
 import type { RenderTask } from 'pdfjs-dist'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffectEvent, useRef } from 'react'
 
 export type Priority = 0 | 1 | 2
 
@@ -33,11 +33,11 @@ type RunningItem = {
 }
 
 type RenderScheduler = {
-  schedule: (pageIndex: number, priority: Priority) => void
-  cancel: (pageIndex: number) => void
-  cancelAll: () => void
-  newVersion: () => number
-  getVersion: () => number
+  scheduleRenderTask: (pageIndex: number, priority: Priority) => void
+  cancelRenderTask: (pageIndex: number) => void
+  cancelAllRenderTask: () => void
+  newRenderVersion: () => number
+  getRenderVersion: () => number
 }
 
 type RenderExecutor = (
@@ -55,17 +55,15 @@ export function useRenderScheduler(
   const runningRef = useRef<Map<number, RunningItem>>(new Map())
   const versionRef = useRef(0)
 
-  const runNextRef = useRef<() => void>(null)
-
   // ===================== version =====================
 
-  const newVersion = useCallback(() => {
+  const newRenderVersion = useCallback(() => {
     versionRef.current++
-    cancelAll()
+    cancelAllRenderTask()
     return versionRef.current
   }, [])
 
-  const getVersion = useCallback(() => versionRef.current, [])
+  const getRenderVersion = useCallback(() => versionRef.current, [])
 
   // ===================== queue =====================
 
@@ -73,7 +71,7 @@ export function useRenderScheduler(
     queueRef.current.sort((a, b) => a.priority - b.priority)
   }
 
-  const schedule = useCallback(
+  const scheduleRenderTask = useCallback(
     (pageIndex: number, priority: Priority = 1, force: boolean = false) => {
       const version = versionRef.current
 
@@ -101,7 +99,7 @@ export function useRenderScheduler(
       pdfLogger('Render', `Commit render task for page ${pageIndex}`, 'debug')
 
       sortQueue()
-      runNextRef.current?.()
+      runNext()
     },
     []
   )
@@ -118,7 +116,7 @@ export function useRenderScheduler(
       }
 
       try {
-        const task = await executor(pageIndex, version, force, getVersion)
+        const task = await executor(pageIndex, version, force, getRenderVersion)
 
         if (!task) return
 
@@ -137,34 +135,36 @@ export function useRenderScheduler(
         }
       } finally {
         runningRef.current.delete(pageIndex)
-        runNextRef.current?.()
+        runNext()
       }
     },
     [executor]
   )
 
-  const runNext = useCallback(() => {
-    pdfLogger(
-      'Render',
-      `Running task number: ${runningRef.current.size}, queue task number: ${queueRef.current.length}`,
-      'debug'
-    )
-    while (runningRef.current.size < maxConcurrency && queueRef.current.length > 0) {
-      const item = queueRef.current.shift()!
+  const runNext = useEffectEvent(
+    useCallback(() => {
+      pdfLogger(
+        'Render',
+        `Running task number: ${runningRef.current.size}, queue task number: ${queueRef.current.length}`,
+        'debug'
+      )
+      while (runningRef.current.size < maxConcurrency && queueRef.current.length > 0) {
+        const item = queueRef.current.shift()!
 
-      // version outdated.
-      if (item.version !== versionRef.current) {
-        pdfLogger('Render', `Outdated task for page ${item.pageIndex}, skip`, 'debug')
-        continue
+        // version outdated.
+        if (item.version !== versionRef.current) {
+          pdfLogger('Render', `Outdated task for page ${item.pageIndex}, skip`, 'debug')
+          continue
+        }
+
+        execute(item)
       }
-
-      execute(item)
-    }
-  }, [execute, maxConcurrency])
+    }, [execute, maxConcurrency])
+  )
 
   // ===================== cancel =====================
 
-  const cancel = useCallback((pageIndex: number) => {
+  const cancelRenderTask = useCallback((pageIndex: number) => {
     // cancel running
     const running = runningRef.current.get(pageIndex)
     if (running) {
@@ -179,7 +179,7 @@ export function useRenderScheduler(
     queueRef.current = queueRef.current.filter((t) => t.pageIndex !== pageIndex)
   }, [])
 
-  const cancelAll = useCallback(() => {
+  const cancelAllRenderTask = useCallback(() => {
     runningRef.current.forEach(({ task }) => {
       try {
         task.cancel()
@@ -191,15 +191,11 @@ export function useRenderScheduler(
     queueRef.current = []
   }, [])
 
-  useEffect(() => {
-    runNextRef.current = runNext
-  }, [runNext])
-
   return {
-    schedule,
-    cancel,
-    cancelAll,
-    newVersion,
-    getVersion
+    scheduleRenderTask,
+    cancelRenderTask,
+    cancelAllRenderTask,
+    newRenderVersion,
+    getRenderVersion
   }
 }
