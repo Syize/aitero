@@ -25,24 +25,24 @@
 ## Phase 2 - Main-process Zotero integration
 - [x] Add a main-process Zotero service for read-only library access.
 - [x] Add config persistence for the user-selected Zotero data directory.
-- [ ] Implement directory validation:
-  - [ ] Detect required Zotero database presence.
-  - [ ] Detect required storage/attachment layout assumptions.
-- [ ] Implement `selectZoteroDataDir()`.
-- [ ] Implement `getZoteroConfig()`.
-- [ ] Implement SQLite-backed queries for:
-  - [ ] Collection tree
-  - [ ] Item list summary
-  - [ ] Item detail
-  - [ ] Attachment metadata
-  - [ ] Default PDF resolution
-- [ ] Define the stable "default PDF" selection rule for multi-PDF items.
-- [ ] Add robust error mapping so renderer receives user-facing failures instead of raw DB/file errors.
+- [x] Implement directory validation:
+  - [x] Detect required Zotero database presence.
+  - [x] Detect required storage/attachment layout assumptions.
+- [x] Implement `selectZoteroDataDir()`.
+- [x] Implement `getZoteroConfig()`.
+- [x] Implement SQLite-backed queries for:
+  - [x] Collection tree
+  - [x] Item list summary
+  - [x] Item detail
+  - [x] Attachment metadata
+  - [x] Default PDF resolution
+- [x] Define the stable "default PDF" selection rule for multi-PDF items.
+- [x] Add robust error mapping so renderer receives user-facing failures instead of raw DB/file errors.
 
 ### Acceptance
-- [ ] With a valid Zotero directory, the main process can return collections, items, details, and resolved PDF paths.
-- [ ] With an invalid directory, the app returns a clear validation error.
-- [ ] No renderer code directly reads SQLite or local filesystem paths.
+- [x] With a valid Zotero directory, the main process can return collections, items, details, and resolved PDF paths.
+- [x] With an invalid directory, the app returns a clear validation error.
+- [x] No renderer code directly reads SQLite or local filesystem paths.
 
 ## Phase 3 - Preload API and renderer data layer
 - [ ] Expose a namespaced read-only API under `window.api.zotero.*`.
