@@ -4,164 +4,158 @@
 @variant dark (false);
 
 @keyframes fadeIn {
-	0% {
-		opacity: 0;
-	}
-	100% {
-		opacity: 1;
-	}
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
-	0% {
-		transform: translateY(10px);
-		opacity: 0;
-	}
-	100% {
-		transform: translateY(0);
-		opacity: 1;
-	}
+  0% {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @keyframes bounceSoft {
-	0%,
-	20%,
-	53%,
-	80%,
-	100% {
-		transform: translateY(0);
-	}
-	40%,
-	43% {
-		transform: translateY(-5px);
-	}
-	70% {
-		transform: translateY(-2px);
-	}
+  0%,
+  20%,
+  53%,
+  80%,
+  100% {
+    transform: translateY(0);
+  }
+  40%,
+  43% {
+    transform: translateY(-5px);
+  }
+  70% {
+    transform: translateY(-2px);
+  }
 }
 
 @theme {
-	--color-cream: #fdf6e3;
-	--color-sage: #87a96b;
-	--color-lavender: #c4a5e7;
-	--color-peach: #ffb5a7;
-	--color-mint: #a8e6cf;
-	--color-slate: #64748b;
-	--color-charcoal: #374151;
-	--color-pencil: #2d3748;
-	--color-eraser: #f7fafc;
-	--font-sans: 'Inter', system-ui, sans-serif;
-	--animate-fade-in: fadeIn 0.3s ease-in-out;
-	--animate-slide-up: slideUp 0.3s ease-out;
-	--animate-bounce-soft: bounceSoft 0.5s ease-out;
+  --color-cream: #fdf6e3;
+  --color-sage: #87a96b;
+  --color-lavender: #c4a5e7;
+  --color-peach: #ffb5a7;
+  --color-mint: #a8e6cf;
+  --color-slate: #64748b;
+  --color-charcoal: #374151;
+  --color-pencil: #2d3748;
+  --color-eraser: #f7fafc;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --animate-fade-in: fadeIn 0.3s ease-in-out;
+  --animate-slide-up: slideUp 0.3s ease-out;
+  --animate-bounce-soft: bounceSoft 0.5s ease-out;
 }
 
-/* Self-hosted Fonts */
-/* dancing-script-600 - latin */
 @font-face {
-	font-display: swap;
-	font-family: 'Dancing Script';
-	font-style: normal;
-	font-weight: 600;
-	src: url('/fonts/dancing-script-v29-latin-600.woff2') format('woff2');
+  font-display: swap;
+  font-family: 'Dancing Script';
+  font-style: normal;
+  font-weight: 600;
+  src: url('/fonts/dancing-script-v29-latin-600.woff2') format('woff2');
 }
 
-/* inter-300 - latin */
 @font-face {
-	font-display: swap;
-	font-family: 'Inter';
-	font-style: normal;
-	font-weight: 300;
-	src: url('/fonts/inter-v20-latin-300.woff2') format('woff2');
+  font-display: swap;
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300;
+  src: url('/fonts/inter-v20-latin-300.woff2') format('woff2');
 }
 
-/* inter-regular - latin */
 @font-face {
-	font-display: swap;
-	font-family: 'Inter';
-	font-style: normal;
-	font-weight: 400;
-	src: url('/fonts/inter-v20-latin-regular.woff2') format('woff2');
+  font-display: swap;
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/inter-v20-latin-regular.woff2') format('woff2');
 }
 
-/* inter-500 - latin */
 @font-face {
-	font-display: swap;
-	font-family: 'Inter';
-	font-style: normal;
-	font-weight: 500;
-	src: url('/fonts/inter-v20-latin-500.woff2') format('woff2');
+  font-display: swap;
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  src: url('/fonts/inter-v20-latin-500.woff2') format('woff2');
 }
 
-/* inter-600 - latin */
 @font-face {
-	font-display: swap;
-	font-family: 'Inter';
-	font-style: normal;
-	font-weight: 600;
-	src: url('/fonts/inter-v20-latin-600.woff2') format('woff2');
+  font-display: swap;
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  src: url('/fonts/inter-v20-latin-600.woff2') format('woff2');
 }
 
-/* inter-700 - latin */
 @font-face {
-	font-display: swap;
-	font-family: 'Inter';
-	font-style: normal;
-	font-weight: 700;
-	src: url('/fonts/inter-v20-latin-700.woff2') format('woff2');
+  font-display: swap;
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  src: url('/fonts/inter-v20-latin-700.woff2') format('woff2');
 }
 
-/* Custom Font for Text Tool */
 @font-face {
-	font-family: 'ReenieBeanie';
-	src:
-		url('/fonts/ReenieBeanie.woff2') format('woff2'),
-		url('/fonts/ReenieBeanie.ttf') format('truetype');
-	font-weight: normal;
-	font-style: normal;
-	font-display: swap;
+  font-family: 'ReenieBeanie';
+  src:
+    url('/fonts/ReenieBeanie.woff2') format('woff2'),
+    url('/fonts/ReenieBeanie.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
 }
 
-/* Lora - serif font */
 @font-face {
-	font-family: 'Lora';
-	src: url('/fonts/additional-fonts/Lora-VariableFont_wght.woff2')
-		format('woff2');
-	font-weight: normal;
-	font-style: normal;
-	font-display: swap;
+  font-family: 'Lora';
+  src: url('/fonts/additional-fonts/Lora-VariableFont_wght.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
 }
 
-/* Urbanist - modern sans-serif */
 @font-face {
-	font-family: 'Urbanist';
-	src: url('/fonts/additional-fonts/Urbanist-Regular.woff2') format('woff2');
-	font-weight: normal;
-	font-style: normal;
-	font-display: swap;
+  font-family: 'Urbanist';
+  src: url('/fonts/additional-fonts/Urbanist-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
 }
 
 @layer base {
-	html {
-		font-family: 'Inter', system-ui, sans-serif;
-		font-size: 16px;
-		zoom: 1;
-	}
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 16px;
+    zoom: 1;
+  }
 
-	body {
-		@apply bg-cream dark:bg-gray-900 text-charcoal dark:text-gray-100 overflow-hidden;
-		transition:
-			background-color 0.3s ease,
-			color 0.3s ease;
-	}
+  body {
+    @apply bg-cream dark:bg-gray-900 text-charcoal dark:text-gray-100 overflow-hidden;
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease;
+  }
 
-	* {
-		-webkit-font-smoothing: antialiased;
-		-moz-osx-font-smoothing: grayscale;
-	}
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-	/* Set checkbox accent color to brand sage green */
-	input[type='checkbox'] {
-		accent-color: #87a96b; /* sage green */
-	}
+  input[type='checkbox'] {
+    accent-color: #87a96b;
+  }
+}
+
+#root {
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
 }

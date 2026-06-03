@@ -1,8 +1,13 @@
 import './App.css'
-import { PDFViewer } from './pdf/pdfViewer'
+import { AppShell } from './app/AppShell'
+import { WorkspaceProvider } from './app/workspaceState'
 
 function App() {
-	return <PDFViewer></PDFViewer>
+  return (
+    <WorkspaceProvider>
+      <AppShell />
+    </WorkspaceProvider>
+  )
 }
 
 export default App

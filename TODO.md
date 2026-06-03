@@ -6,21 +6,21 @@
 - [ ] Decide whether `TODO.md` should remain the execution contract for this feature and update it as phases complete.
 
 ## Phase 1 - App shell and workspace model
-- [ ] Replace the current `App -> PDFViewer` single-view entry with an app shell.
-- [ ] Add a top tab bar plus a main content region.
-- [ ] Define the tab model:
-  - [ ] One permanent `Library` tab.
-  - [ ] Multiple closable `Reader` tabs.
-  - [ ] Active tab drives which workspace is rendered.
-- [ ] Create app-level state for workspace tabs; do not mix it into `PDFProvider`.
-- [ ] Add minimal shared types:
-  - [ ] `WorkspaceTab`
-  - [ ] `ReaderTabState`
-  - [ ] `LibraryFilterState`
+- [x] Replace the current `App -> PDFViewer` single-view entry with an app shell.
+- [x] Add a top tab bar plus a main content region.
+- [x] Define the tab model:
+  - [x] One permanent `Library` tab.
+  - [x] Multiple closable `Reader` tabs.
+  - [x] Active tab drives which workspace is rendered.
+- [x] Create app-level state for workspace tabs; do not mix it into `PDFProvider`.
+- [x] Add minimal shared types:
+  - [x] `WorkspaceTab`
+  - [x] `ReaderTabState`
+  - [x] `LibraryFilterState`
 
 ### Acceptance
-- [ ] The app can render a stable shell with a fixed library tab even before Zotero data is wired up.
-- [ ] Switching active tabs changes the visible workspace without breaking the shell.
+- [x] The app can render a stable shell with a fixed library tab even before Zotero data is wired up.
+- [x] Switching active tabs changes the visible workspace without breaking the shell.
 
 ## Phase 2 - Main-process Zotero integration
 - [ ] Add a main-process Zotero service for read-only library access.
