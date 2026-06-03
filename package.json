@@ -27,7 +27,8 @@
     "electron-updater": "^6.3.9",
     "lucide-react": "^1.7.0",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^5.4.54"
+    "pdfjs-dist": "5.4.54",
+    "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
@@ -52,11 +53,5 @@
     "react-dom": "^19.2.1",
     "typescript": "^5.9.3",
     "vite": "^7.2.6"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "esbuild"
-    ]
   }
 }
