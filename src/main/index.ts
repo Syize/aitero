@@ -2,6 +2,10 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
+import { createAppConfigStore } from './config/store'
+import { createZoteroService } from './zotero/service'
+
+let zoteroService: ReturnType<typeof createZoteroService>
 
 function createWindow(): void {
   // Create the browser window.
@@ -41,7 +45,7 @@ function createWindow(): void {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
 
@@ -54,6 +58,13 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
+
+  const configStore = createAppConfigStore(app.getPath('userData'))
+  zoteroService = createZoteroService(configStore)
+
+  // Phase 2 entry point: keep Zotero library access isolated in the main process.
+  await zoteroService.initialize()
+  zoteroService.getSummary()
 
   createWindow()
 

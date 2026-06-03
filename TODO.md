@@ -23,8 +23,8 @@
 - [x] Switching active tabs changes the visible workspace without breaking the shell.
 
 ## Phase 2 - Main-process Zotero integration
-- [ ] Add a main-process Zotero service for read-only library access.
-- [ ] Add config persistence for the user-selected Zotero data directory.
+- [x] Add a main-process Zotero service for read-only library access.
+- [x] Add config persistence for the user-selected Zotero data directory.
 - [ ] Implement directory validation:
   - [ ] Detect required Zotero database presence.
   - [ ] Detect required storage/attachment layout assumptions.
