@@ -1,7 +1,9 @@
 import { useLibraryBootstrap } from './libraryBootstrap'
+import { useWorkspace } from './workspaceState'
 
 export function LibraryWorkspace() {
   const { status, summary, error, pendingLabel, retry, selectDataDir } = useLibraryBootstrap()
+  const { libraryFilters, setLibraryFilters, resetLibraryFilters } = useWorkspace()
   const isSelectingDirectory = status === 'selecting-directory'
   const showsSetupSurface =
     status === 'needs-setup' ||
@@ -9,6 +11,8 @@ export function LibraryWorkspace() {
   const showsInvalidSurface =
     status === 'invalid-config' ||
     (isSelectingDirectory && !!summary && summary.isConfigured)
+  const hasActiveLibraryFilters =
+    libraryFilters.query.trim().length > 0 || libraryFilters.collectionId !== null
 
   if (status === 'loading-config') {
     return (
@@ -193,17 +197,88 @@ export function LibraryWorkspace() {
           saved Zotero configuration is present and valid. The full three-pane UI will be
           layered onto this surface in the next phases.
         </p>
+
+        <div className="library-workspace__filter-preview">
+          <label className="library-workspace__filter-field">
+            <span>Search preview</span>
+            <input
+              type="text"
+              value={libraryFilters.query}
+              onChange={(event) => setLibraryFilters({ query: event.target.value })}
+              placeholder="Type to preview the no-results state"
+            />
+          </label>
+
+          <div className="library-workspace__filter-actions">
+            <button
+              type="button"
+              className={`library-workspace__filter-chip${libraryFilters.collectionId === null ? ' is-active' : ''}`}
+              onClick={() => setLibraryFilters({ collectionId: null })}
+            >
+              All Items
+            </button>
+            <button
+              type="button"
+              className={`library-workspace__filter-chip${libraryFilters.collectionId === 1 ? ' is-active' : ''}`}
+              onClick={() => setLibraryFilters({ collectionId: 1 })}
+            >
+              Preview Collection Filter
+            </button>
+            <button
+              type="button"
+              className="library-workspace__action library-workspace__action--secondary"
+              onClick={resetLibraryFilters}
+            >
+              Reset Preview Filters
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="library-workspace__grid">
         <article className="library-workspace__panel">
           <h2>Collections</h2>
-          <p>Reserved for the validated collection tree pane.</p>
+          <p>
+            Reserved for the validated collection tree pane. For now, the preview filter
+            buttons above drive the same collection filter state that the future left pane
+            will own.
+          </p>
         </article>
 
         <article className="library-workspace__panel">
           <h2>Items</h2>
-          <p>Reserved for the center literature list and search results.</p>
+          {hasActiveLibraryFilters ? (
+            <div className="library-workspace__no-results">
+              <span className="library-workspace__eyebrow">No Results</span>
+              <h3>No items match the current search or collection filter.</h3>
+              <p>
+                This empty state is now wired into the ready workspace, so later phases
+                can replace the placeholder list with real Zotero results without
+                redesigning the filter-empty behavior.
+              </p>
+              <div className="library-workspace__filter-summary">
+                <span>
+                  Search: <strong>{libraryFilters.query.trim() || 'none'}</strong>
+                </span>
+                <span>
+                  Collection:{' '}
+                  <strong>{libraryFilters.collectionId === null ? 'All Items' : `#${libraryFilters.collectionId}`}</strong>
+                </span>
+              </div>
+              <button
+                type="button"
+                className="library-workspace__action"
+                onClick={resetLibraryFilters}
+              >
+                Clear Filters
+              </button>
+            </div>
+          ) : (
+            <p>
+              Reserved for the center literature list and search results. Once filters are
+              applied, this pane now switches into the dedicated no-results state.
+            </p>
+          )}
         </article>
 
         <article className="library-workspace__panel">

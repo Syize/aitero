@@ -64,7 +64,7 @@
 - [x] Add a "select Zotero data directory" entry point.
 - [x] Add invalid-directory error state and retry action.
 - [x] Add loading states for initial library bootstrapping.
-- [ ] Add a no-results state for empty searches/filter combinations.
+- [x] Add a no-results state for empty searches/filter combinations.
 
 ### First-Run Flow Design Notes
 - The first-run flow should live inside `LibraryWorkspace`, not as a separate app route.
@@ -99,8 +99,8 @@
   - `no-results state` belongs after `ready`, when Phase 5 item/collection data is being rendered.
 
 ### Acceptance
-- [ ] Fresh startup with no config lands in a usable setup flow.
-- [ ] Invalid configuration does not crash the app and can be corrected in-app.
+- [x] Fresh startup with no config lands in a usable setup flow.
+- [x] Invalid configuration does not crash the app and can be corrected in-app.
 
 ## Phase 5 - Three-pane library workspace
 - [ ] Build `LibraryWorkspace` as a three-pane layout.
