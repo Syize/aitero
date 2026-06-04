@@ -60,10 +60,10 @@
 - [x] The preload contract is small and read-only.
 
 ## Phase 4 - First-run setup and empty/error states
-- [ ] Build the first-run flow for missing Zotero directory configuration.
-- [ ] Add a "select Zotero data directory" entry point.
-- [ ] Add invalid-directory error state and retry action.
-- [ ] Add loading states for initial library bootstrapping.
+- [x] Build the first-run flow for missing Zotero directory configuration.
+- [x] Add a "select Zotero data directory" entry point.
+- [x] Add invalid-directory error state and retry action.
+- [x] Add loading states for initial library bootstrapping.
 - [ ] Add a no-results state for empty searches/filter combinations.
 
 ### First-Run Flow Design Notes
