@@ -45,19 +45,19 @@
 - [x] No renderer code directly reads SQLite or local filesystem paths.
 
 ## Phase 3 - Preload API and renderer data layer
-- [ ] Expose a namespaced read-only API under `window.api.zotero.*`.
-- [ ] Add renderer-side TypeScript DTOs:
-  - [ ] `ZoteroLibrarySummary`
-  - [ ] `ZoteroCollectionNode`
-  - [ ] `ZoteroItemListEntry`
-  - [ ] `ZoteroItemDetail`
-  - [ ] `ZoteroAttachment`
-- [ ] Add a renderer data-access layer that wraps preload calls instead of calling `window.api` inline in components.
-- [ ] Ensure the DTO layer hides SQLite schema details from UI components.
+- [x] Expose a namespaced read-only API under `window.api.zotero.*`.
+- [x] Add renderer-side TypeScript DTOs:
+  - [x] `ZoteroLibrarySummary`
+  - [x] `ZoteroCollectionNode`
+  - [x] `ZoteroItemListEntry`
+  - [x] `ZoteroItemDetail`
+  - [x] `ZoteroAttachment`
+- [x] Add a renderer data-access layer that wraps preload calls instead of calling `window.api` inline in components.
+- [x] Ensure the DTO layer hides SQLite schema details from UI components.
 
 ### Acceptance
-- [ ] Renderer components can fetch library data entirely through typed API wrappers.
-- [ ] The preload contract is small and read-only.
+- [x] Renderer components can fetch library data entirely through typed API wrappers.
+- [x] The preload contract is small and read-only.
 
 ## Phase 4 - First-run setup and empty/error states
 - [ ] Build the first-run flow for missing Zotero directory configuration.

@@ -3,7 +3,13 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
 import { createAppConfigStore } from './config/store'
+import {
+  type ZoteroIpcError,
+  type ZoteroIpcResult,
+  zoteroIpcChannels
+} from './zotero/ipc'
 import { createZoteroService } from './zotero/service'
+import { ZoteroServiceError } from './zotero/service'
 
 let zoteroService: ReturnType<typeof createZoteroService>
 
@@ -65,6 +71,7 @@ app.whenReady().then(async () => {
   // Phase 2 entry point: keep Zotero library access isolated in the main process.
   await zoteroService.initialize()
   zoteroService.getSummary()
+  registerZoteroIpcHandlers()
 
   createWindow()
 
@@ -86,3 +93,58 @@ app.on('window-all-closed', () => {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
+
+function registerZoteroIpcHandlers(): void {
+  ipcMain.handle(zoteroIpcChannels.selectZoteroDataDir, async (event) => {
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    return handleZoteroRequest(() => zoteroService.selectZoteroDataDir(ownerWindow))
+  })
+
+  ipcMain.handle(zoteroIpcChannels.getZoteroConfig, () => {
+    return handleZoteroRequest(() => zoteroService.getZoteroConfig())
+  })
+
+  ipcMain.handle(zoteroIpcChannels.listCollections, () => {
+    return handleZoteroRequest(() => zoteroService.listCollections())
+  })
+
+  ipcMain.handle(zoteroIpcChannels.listItems, () => {
+    return handleZoteroRequest(() => zoteroService.listItems())
+  })
+
+  ipcMain.handle(zoteroIpcChannels.getItemDetail, (_event, itemId: number) => {
+    return handleZoteroRequest(() => zoteroService.getItemDetail(itemId))
+  })
+
+  ipcMain.handle(zoteroIpcChannels.resolveItemDefaultPdf, (_event, itemId: number) => {
+    return handleZoteroRequest(() => zoteroService.resolveItemDefaultPdf(itemId))
+  })
+}
+
+async function handleZoteroRequest<T>(run: () => Promise<T> | T): Promise<ZoteroIpcResult<T>> {
+  try {
+    return {
+      ok: true,
+      data: await run()
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: serializeZoteroError(error)
+    }
+  }
+}
+
+function serializeZoteroError(error: unknown): ZoteroIpcError {
+  if (error instanceof ZoteroServiceError) {
+    return {
+      code: error.code,
+      message: error.message
+    }
+  }
+
+  return {
+    code: 'database-query-failed',
+    message: 'An unexpected Zotero error occurred.'
+  }
+}
