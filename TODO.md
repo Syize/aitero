@@ -103,7 +103,7 @@
 - [x] Invalid configuration does not crash the app and can be corrected in-app.
 
 ## Phase 5 - Three-pane library workspace
-- [ ] Build `LibraryWorkspace` as a three-pane layout.
+- [x] Build `LibraryWorkspace` as a three-pane layout.
 - [ ] Left pane: collection tree
   - [ ] Show `All Items`.
   - [ ] Show real collection hierarchy.

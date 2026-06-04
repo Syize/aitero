@@ -189,41 +189,85 @@ export function LibraryWorkspace() {
 
   return (
     <section className="library-workspace" aria-label="Library workspace">
-      <div className="library-workspace__hero">
-        <span className="library-workspace__eyebrow">Ready State</span>
-        <h1>Library bootstrap completed successfully.</h1>
-        <p>
-          The startup flow now promotes the library tab into a stable ready state once the
-          saved Zotero configuration is present and valid. The full three-pane UI will be
-          layered onto this surface in the next phases.
-        </p>
+      <header className="library-workspace__header">
+        <div className="library-workspace__hero">
+          <span className="library-workspace__eyebrow">Phase 5</span>
+          <h1>Library workspace is now a real three-pane layout.</h1>
+          <p>
+            The startup flow has handed control to a desktop-style library shell with
+            dedicated collection, item, and detail regions. Later tasks can now fill each
+            pane without reshaping the whole workspace.
+          </p>
+        </div>
 
-        <div className="library-workspace__filter-preview">
-          <label className="library-workspace__filter-field">
-            <span>Search preview</span>
-            <input
-              type="text"
-              value={libraryFilters.query}
-              onChange={(event) => setLibraryFilters({ query: event.target.value })}
-              placeholder="Type to preview the no-results state"
-            />
-          </label>
+        <div className="library-workspace__meta-card">
+          <span className="library-workspace__meta-label">Zotero data directory</span>
+          <strong>{summary?.dataDir ?? 'Unavailable'}</strong>
+          <p>
+            The workspace only reaches this state after the saved configuration validates
+            successfully.
+          </p>
+        </div>
+      </header>
 
-          <div className="library-workspace__filter-actions">
+      <div className="library-workspace__layout">
+        <aside className="library-pane library-pane--collections" aria-label="Collections pane">
+          <div className="library-pane__header">
+            <div>
+              <span className="library-pane__eyebrow">Left Pane</span>
+              <h2>Collections</h2>
+            </div>
+            <span className="library-pane__count">2 preview nodes</span>
+          </div>
+
+          <div className="library-pane__body">
             <button
               type="button"
-              className={`library-workspace__filter-chip${libraryFilters.collectionId === null ? ' is-active' : ''}`}
+              className={`library-pane__nav-item${libraryFilters.collectionId === null ? ' is-active' : ''}`}
               onClick={() => setLibraryFilters({ collectionId: null })}
             >
-              All Items
+              <strong>All Items</strong>
+              <span>Default root view for the future library tree.</span>
             </button>
+
             <button
               type="button"
-              className={`library-workspace__filter-chip${libraryFilters.collectionId === 1 ? ' is-active' : ''}`}
+              className={`library-pane__nav-item${libraryFilters.collectionId === 1 ? ' is-active' : ''}`}
               onClick={() => setLibraryFilters({ collectionId: 1 })}
             >
-              Preview Collection Filter
+              <strong>Preview Collection</strong>
+              <span>Temporary node used to exercise collection-driven empty states.</span>
             </button>
+
+            <div className="library-pane__note">
+              The real Zotero collection tree will replace these preview nodes in the next
+              Phase 5 steps.
+            </div>
+          </div>
+        </aside>
+
+        <section className="library-pane library-pane--items" aria-label="Items pane">
+          <div className="library-pane__header">
+            <div>
+              <span className="library-pane__eyebrow">Center Pane</span>
+              <h2>Items</h2>
+            </div>
+            <span className="library-pane__count">
+              {hasActiveLibraryFilters ? '0 matching items' : 'List scaffold'}
+            </span>
+          </div>
+
+          <div className="library-pane__toolbar">
+            <label className="library-pane__search">
+              <span>Search preview</span>
+              <input
+                type="text"
+                value={libraryFilters.query}
+                onChange={(event) => setLibraryFilters({ query: event.target.value })}
+                placeholder="Type to preview the no-results state"
+              />
+            </label>
+
             <button
               type="button"
               className="library-workspace__action library-workspace__action--secondary"
@@ -232,59 +276,76 @@ export function LibraryWorkspace() {
               Reset Preview Filters
             </button>
           </div>
-        </div>
-      </div>
 
-      <div className="library-workspace__grid">
-        <article className="library-workspace__panel">
-          <h2>Collections</h2>
-          <p>
-            Reserved for the validated collection tree pane. For now, the preview filter
-            buttons above drive the same collection filter state that the future left pane
-            will own.
-          </p>
-        </article>
-
-        <article className="library-workspace__panel">
-          <h2>Items</h2>
-          {hasActiveLibraryFilters ? (
-            <div className="library-workspace__no-results">
-              <span className="library-workspace__eyebrow">No Results</span>
-              <h3>No items match the current search or collection filter.</h3>
-              <p>
-                This empty state is now wired into the ready workspace, so later phases
-                can replace the placeholder list with real Zotero results without
-                redesigning the filter-empty behavior.
-              </p>
-              <div className="library-workspace__filter-summary">
-                <span>
-                  Search: <strong>{libraryFilters.query.trim() || 'none'}</strong>
-                </span>
-                <span>
-                  Collection:{' '}
-                  <strong>{libraryFilters.collectionId === null ? 'All Items' : `#${libraryFilters.collectionId}`}</strong>
-                </span>
+          <div className="library-pane__body">
+            {hasActiveLibraryFilters ? (
+              <div className="library-workspace__no-results">
+                <span className="library-workspace__eyebrow">No Results</span>
+                <h3>No items match the current search or collection filter.</h3>
+                <p>
+                  This empty state is now anchored inside the real center pane, so the
+                  future list implementation can reuse it directly when filters produce no
+                  matches.
+                </p>
+                <div className="library-workspace__filter-summary">
+                  <span>
+                    Search: <strong>{libraryFilters.query.trim() || 'none'}</strong>
+                  </span>
+                  <span>
+                    Collection:{' '}
+                    <strong>{libraryFilters.collectionId === null ? 'All Items' : `#${libraryFilters.collectionId}`}</strong>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="library-workspace__action"
+                  onClick={resetLibraryFilters}
+                >
+                  Clear Filters
+                </button>
               </div>
-              <button
-                type="button"
-                className="library-workspace__action"
-                onClick={resetLibraryFilters}
-              >
-                Clear Filters
-              </button>
-            </div>
-          ) : (
-            <p>
-              Reserved for the center literature list and search results. Once filters are
-              applied, this pane now switches into the dedicated no-results state.
-            </p>
-          )}
-        </article>
+            ) : (
+              <div className="library-pane__placeholder-list">
+                <div className="library-pane__placeholder-item">
+                  <strong>Item list region</strong>
+                  <span>Search, sorting, and result rows will render here in later tasks.</span>
+                </div>
+                <div className="library-pane__placeholder-item">
+                  <strong>Current behavior</strong>
+                  <span>Applying a query or collection filter flips this pane into the no-results state.</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
 
-        <article className="library-workspace__panel">
-          <h2>Details</h2>
-          <p>Reserved for metadata and attachment details.</p>
-        </article>
+        <aside className="library-pane library-pane--details" aria-label="Details pane">
+          <div className="library-pane__header">
+            <div>
+              <span className="library-pane__eyebrow">Right Pane</span>
+              <h2>Details</h2>
+            </div>
+            <span className="library-pane__count">Awaiting selection</span>
+          </div>
+
+          <div className="library-pane__body">
+            <div className="library-pane__detail-card">
+              <strong>Metadata preview</strong>
+              <p>
+                This pane is reserved for the selected item summary, creators, year, and
+                attachments once the list/detail flow is wired in.
+              </p>
+            </div>
+
+            <div className="library-pane__detail-card">
+              <strong>Attachment context</strong>
+              <p>
+                Multi-attachment explanation and no-PDF messaging will live here without
+                disturbing the outer three-pane layout.
+              </p>
+            </div>
+          </div>
+        </aside>
       </div>
     </section>
   )
