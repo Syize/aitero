@@ -66,6 +66,38 @@
 - [ ] Add loading states for initial library bootstrapping.
 - [ ] Add a no-results state for empty searches/filter combinations.
 
+### First-Run Flow Design Notes
+- The first-run flow should live inside `LibraryWorkspace`, not as a separate app route.
+- `AppShell` should continue to own the fixed shell and tab strip; `LibraryWorkspace` should switch its content based on Zotero bootstrap state.
+- Keep Zotero bootstrap state separate from tab/workspace state. Do not overload `WorkspaceProvider` with startup validation flow.
+- Introduce a renderer-side bootstrap state model before wiring full UI:
+  - `loading-config`
+  - `needs-setup`
+  - `invalid-config`
+  - `selecting-directory`
+  - `load-failed`
+  - `ready`
+- Expected transitions:
+  - Initial library mount -> `loading-config`
+  - `getZoteroConfig()` returns `isConfigured === false` -> `needs-setup`
+  - `getZoteroConfig()` returns configured but `validation.isValid === false` -> `invalid-config`
+  - `getZoteroConfig()` returns configured and valid -> `ready`
+  - `needs-setup` or `invalid-config` -> user triggers directory picker -> `selecting-directory`
+  - Successful selection -> re-evaluate config and land in `ready` or `invalid-config`
+  - Config read failure -> `load-failed`
+- UI responsibilities by state:
+  - `loading-config`: show a library bootstrap loading view inside the existing library tab.
+  - `needs-setup`: show a first-run setup card with a primary `Select Zotero Data Directory` action.
+  - `invalid-config`: show the current validation issues plus `Choose Another Directory` and `Retry`.
+  - `selecting-directory`: keep the current setup/error surface visible but disable actions and show pending state.
+  - `load-failed`: show a config-read failure state with `Retry`.
+  - `ready`: hand off to the normal library workspace implementation in later phases.
+- Scope boundaries for later Phase 4 items:
+  - `select Zotero data directory entry point` belongs to `needs-setup` and `invalid-config`.
+  - `invalid-directory error state` is the concrete UI for `invalid-config`.
+  - `loading states` cover both `loading-config` and `selecting-directory`.
+  - `no-results state` belongs after `ready`, when Phase 5 item/collection data is being rendered.
+
 ### Acceptance
 - [ ] Fresh startup with no config lands in a usable setup flow.
 - [ ] Invalid configuration does not crash the app and can be corrected in-app.
