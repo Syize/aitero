@@ -1,6 +1,7 @@
 import { access, stat } from 'node:fs/promises'
-import { constants } from 'node:fs'
+import { constants, copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { dialog } from 'electron'
 import type { BrowserWindow } from 'electron'
 import type { OpenDialogOptions } from 'electron'
@@ -25,7 +26,8 @@ export class ZoteroService {
 
   private context: ZoteroLibraryContext = {
     dataDir: null,
-    validation: createUnconfiguredValidation()
+    validation: createUnconfiguredValidation(),
+    databaseAccess: createDirectDatabaseAccessState()
   }
 
   async initialize(): Promise<void> {
@@ -56,7 +58,8 @@ export class ZoteroService {
     return {
       isConfigured: this.context.dataDir !== null,
       dataDir: this.context.dataDir,
-      validation: this.context.validation
+      validation: this.context.validation,
+      databaseAccess: this.context.databaseAccess
     }
   }
 
@@ -138,16 +141,18 @@ export class ZoteroService {
     return this.withReadonlyDatabase((database) => {
       const statement = database.prepare(`
         SELECT
-          collectionID AS id,
-          collectionName AS name,
-          parentCollectionID AS parentId
+          collections.collectionID AS id,
+          collections.collectionName AS name,
+          collections.parentCollectionID AS parentId
         FROM collections
-        WHERE deleted = 0
+        LEFT JOIN deletedCollections
+          ON deletedCollections.collectionID = collections.collectionID
+        WHERE deletedCollections.collectionID IS NULL
         ORDER BY
-          CASE WHEN parentCollectionID IS NULL THEN 0 ELSE 1 END,
-          parentCollectionID,
-          collectionName COLLATE NOCASE,
-          collectionID
+          CASE WHEN collections.parentCollectionID IS NULL THEN 0 ELSE 1 END,
+          collections.parentCollectionID,
+          collections.collectionName COLLATE NOCASE,
+          collections.collectionID
       `)
 
       return statement.all().map((row) => mapCollectionRow(row))
@@ -325,6 +330,25 @@ export class ZoteroService {
 
   private withReadonlyDatabase<T>(run: (database: DatabaseSync) => T): T {
     const databasePath = this.getValidatedDatabasePath()
+    try {
+      const result = this.withReadonlyDatabasePath(databasePath, run)
+      this.context.databaseAccess = createDirectDatabaseAccessState()
+      return result
+    } catch (error) {
+      if (isDatabaseLockedError(error)) {
+        const result = this.withReadonlyDatabaseSnapshot(databasePath, run)
+        this.context.databaseAccess = createSnapshotDatabaseAccessState()
+        return result
+      }
+
+      throw error
+    }
+  }
+
+  private withReadonlyDatabasePath<T>(
+    databasePath: string,
+    run: (database: DatabaseSync) => T
+  ): T {
     let database: DatabaseSync
 
     try {
@@ -371,6 +395,21 @@ export class ZoteroService {
     return result as T
   }
 
+  private withReadonlyDatabaseSnapshot<T>(
+    databasePath: string,
+    run: (database: DatabaseSync) => T
+  ): T {
+    const snapshotDir = mkdtempSync(join(tmpdir(), 'aitero-zotero-'))
+    const snapshotPath = join(snapshotDir, basename(databasePath))
+
+    try {
+      copySqliteSnapshot(databasePath, snapshotPath)
+      return this.withReadonlyDatabasePath(snapshotPath, run)
+    } finally {
+      rmSync(snapshotDir, { recursive: true, force: true })
+    }
+  }
+
   private getValidatedDatabasePath(): string {
     this.assertConfigured()
 
@@ -391,11 +430,10 @@ export class ZoteroService {
       SELECT
         itemCreators.itemID AS itemId,
         itemCreators.orderIndex AS orderIndex,
-        creatorData.firstName AS firstName,
-        creatorData.lastName AS lastName
+        creators.firstName AS firstName,
+        creators.lastName AS lastName
       FROM itemCreators
       INNER JOIN creators ON creators.creatorID = itemCreators.creatorID
-      INNER JOIN creatorData ON creatorData.creatorDataID = creators.creatorDataID
       WHERE itemCreators.itemID IN (${placeholders})
       ORDER BY itemCreators.itemID, itemCreators.orderIndex
     `)
@@ -452,7 +490,8 @@ export class ZoteroService {
 
     this.context = {
       dataDir: validation.normalizedDataDir,
-      validation
+      validation,
+      databaseAccess: createDirectDatabaseAccessState()
     }
   }
 }
@@ -642,6 +681,21 @@ function createUnconfiguredValidation(): ZoteroDataDirValidation {
         null
       )
     ]
+  }
+}
+
+function createDirectDatabaseAccessState(): ZoteroLibraryContext['databaseAccess'] {
+  return {
+    mode: 'direct',
+    notice: null
+  }
+}
+
+function createSnapshotDatabaseAccessState(): ZoteroLibraryContext['databaseAccess'] {
+  return {
+    mode: 'snapshot',
+    notice:
+      'Zotero is locking the live database, so Aitero is reading from a temporary snapshot. Changes made in Zotero will not appear here until the next refresh.'
   }
 }
 
@@ -837,4 +891,39 @@ function mapUnexpectedError(
   }
 
   return new ZoteroServiceError(code, message, error)
+}
+
+function isDatabaseLockedError(error: unknown): boolean {
+  if (error instanceof ZoteroServiceError && error.cause) {
+    return isDatabaseLockedError(error.cause)
+  }
+
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const sqliteError = error as Error & {
+    code?: string
+    errstr?: string
+  }
+
+  return (
+    sqliteError.code === 'ERR_SQLITE_ERROR' &&
+    typeof sqliteError.errstr === 'string' &&
+    sqliteError.errstr.toLowerCase().includes('database is locked')
+  )
+}
+
+function copySqliteSnapshot(sourceDatabasePath: string, targetDatabasePath: string): void {
+  const sidecarSuffixes = ['', '-journal', '-wal', '-shm']
+
+  for (const suffix of sidecarSuffixes) {
+    const sourcePath = `${sourceDatabasePath}${suffix}`
+
+    if (!existsSync(sourcePath)) {
+      continue
+    }
+
+    copyFileSync(sourcePath, `${targetDatabasePath}${suffix}`)
+  }
 }

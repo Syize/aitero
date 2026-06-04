@@ -1,12 +1,14 @@
 export interface ZoteroLibraryContext {
   dataDir: string | null
   validation: ZoteroDataDirValidation
+  databaseAccess: ZoteroDatabaseAccessState
 }
 
 export interface ZoteroLibrarySummary {
   isConfigured: boolean
   dataDir: string | null
   validation: ZoteroDataDirValidation
+  databaseAccess: ZoteroDatabaseAccessState
 }
 
 export interface ZoteroDataDirSelectionResult {
@@ -44,6 +46,11 @@ export interface ZoteroDataDirValidation {
   databasePath: string | null
   storageDir: string | null
   issues: ZoteroDataDirIssue[]
+}
+
+export interface ZoteroDatabaseAccessState {
+  mode: 'direct' | 'snapshot'
+  notice: string | null
 }
 
 export interface ZoteroCollectionNode {

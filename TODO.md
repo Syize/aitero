@@ -104,12 +104,12 @@
 
 ## Phase 5 - Three-pane library workspace
 - [x] Build `LibraryWorkspace` as a three-pane layout.
-- [ ] Left pane: collection tree
-  - [ ] Show `All Items`.
-  - [ ] Show real collection hierarchy.
-  - [ ] Selecting a collection updates the item list filter.
+- [x] Left pane: collection tree
+  - [x] Show `All Items`.
+  - [x] Show real collection hierarchy.
+  - [x] Selecting a collection updates the item list filter.
 - [ ] Center pane: item list
-  - [ ] Show title.
+  - [x] Show title.
   - [ ] Show compact author text.
   - [ ] Show year.
   - [ ] Support search by title, author, year.

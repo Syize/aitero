@@ -24,6 +24,12 @@ export interface ZoteroLibrarySummary {
   isConfigured: boolean
   dataDir: string | null
   validation: ZoteroDataDirValidation
+  databaseAccess: ZoteroDatabaseAccessState
+}
+
+export interface ZoteroDatabaseAccessState {
+  mode: 'direct' | 'snapshot'
+  notice: string | null
 }
 
 export interface ZoteroCollectionNode {
