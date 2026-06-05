@@ -710,13 +710,55 @@
 
 .library-pane__item-expansion {
   margin-left: 46px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-radius: 14px;
   background: rgba(47, 75, 60, 0.06);
   border: 1px dashed rgba(47, 75, 60, 0.14);
   color: rgba(55, 65, 81, 0.76);
   font-size: 0.84rem;
   line-height: 1.4;
+}
+
+.library-pane__item-expansion--status {
+  display: flex;
+  align-items: center;
+}
+
+.library-pane__attachment-status {
+  color: rgba(55, 65, 81, 0.74);
+}
+
+.library-pane__attachment-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.library-pane__attachment-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.library-pane__attachment-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(47, 75, 60, 0.78);
+}
+
+.library-pane__attachment-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(35, 51, 39, 0.84);
 }
 
 .library-pane__placeholder-list {

@@ -1,7 +1,9 @@
+import { FileText, Paperclip } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import {
   zoteroApi,
+  type ZoteroAttachment,
   type ZoteroCollectionNode,
   type ZoteroItemDetail,
   type ZoteroItemListEntry
@@ -12,11 +14,23 @@ import { useWorkspace } from './workspaceState'
 const ITEM_ROW_HEIGHT = 92
 const ITEM_ROW_GAP = 10
 const ITEM_ROW_OVERSCAN = 6
-const ITEM_EXPANSION_HEIGHT = 64
+const ITEM_EXPANSION_LOADING_HEIGHT = 52
+const ITEM_EXPANSION_EMPTY_HEIGHT = 52
+const ITEM_EXPANSION_ERROR_HEIGHT = 60
+const ITEM_EXPANSION_PADDING_TOP = 10
+const ITEM_EXPANSION_PADDING_BOTTOM = 10
+const ITEM_ATTACHMENT_ROW_HEIGHT = 34
+const ITEM_ATTACHMENT_ROW_GAP = 8
 
 interface CollectionTreeNode extends ZoteroCollectionNode {
   children: CollectionTreeNode[]
 }
+
+type ExpandedItemState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; attachments: ZoteroAttachment[] }
+  | { status: 'error'; message: string }
 
 export function LibraryWorkspace() {
   const { status, summary, error, pendingLabel, retry, selectDataDir } = useLibraryBootstrap()
@@ -32,6 +46,7 @@ export function LibraryWorkspace() {
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [itemOpenError, setItemOpenError] = useState<string | null>(null)
   const [expandedItemIds, setExpandedItemIds] = useState<number[]>([])
+  const [expandedItemStates, setExpandedItemStates] = useState<Record<number, ExpandedItemState>>({})
   const [detailStatus, setDetailStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [itemDetail, setItemDetail] = useState<ZoteroItemDetail | null>(null)
   const [itemDetailError, setItemDetailError] = useState<string | null>(null)
@@ -62,6 +77,7 @@ export function LibraryWorkspace() {
       setItems([])
       setItemsError(null)
       setExpandedItemIds([])
+      setExpandedItemStates({})
       setDetailStatus('idle')
       setItemDetail(null)
       setItemDetailError(null)
@@ -142,6 +158,7 @@ export function LibraryWorkspace() {
     setItemsError(null)
     setItemOpenError(null)
     setExpandedItemIds([])
+    setExpandedItemStates({})
 
     zoteroApi
       .listItems({ collectionId: libraryFilters.collectionId, query: deferredQuery })
@@ -205,6 +222,61 @@ export function LibraryWorkspace() {
       isActive = false
     }
   }, [libraryFilters.selectedItemId, status])
+
+  async function handleToggleItemExpansion(itemId: number) {
+    const isExpanded = expandedItemIds.includes(itemId)
+
+    if (isExpanded) {
+      setExpandedItemIds((currentIds) => currentIds.filter((id) => id !== itemId))
+      return
+    }
+
+    setExpandedItemIds((currentIds) => [...currentIds, itemId])
+
+    const existingState = expandedItemStates[itemId]
+    if (existingState?.status === 'ready' || existingState?.status === 'loading') {
+      return
+    }
+
+    if (itemDetail && itemDetail.id === itemId) {
+      setExpandedItemStates((currentState) => ({
+        ...currentState,
+        [itemId]: {
+          status: 'ready',
+          attachments: itemDetail.attachments
+        }
+      }))
+      return
+    }
+
+    setExpandedItemStates((currentState) => ({
+      ...currentState,
+      [itemId]: { status: 'loading' }
+    }))
+
+    try {
+      const detail = await zoteroApi.getItemDetail(itemId)
+
+      setExpandedItemStates((currentState) => ({
+        ...currentState,
+        [itemId]: {
+          status: 'ready',
+          attachments: detail?.attachments ?? []
+        }
+      }))
+    } catch (expandedItemError) {
+      setExpandedItemStates((currentState) => ({
+        ...currentState,
+        [itemId]: {
+          status: 'error',
+          message:
+            expandedItemError instanceof Error
+              ? expandedItemError.message
+              : 'Unable to load attachment list.'
+        }
+      }))
+    }
+  }
 
   if (status === 'loading-config') {
     return (
@@ -571,16 +643,11 @@ export function LibraryWorkspace() {
                   items={items}
                   selectedItemId={libraryFilters.selectedItemId}
                   expandedItemIds={expandedItemIds}
+                  expandedItemStates={expandedItemStates}
                   viewportHeight={itemsViewportHeight}
                   scrollTop={itemsScrollTop}
                   onSelectItem={(itemId) => setLibraryFilters({ selectedItemId: itemId })}
-                  onToggleItemExpansion={(itemId) =>
-                    setExpandedItemIds((currentIds) =>
-                      currentIds.includes(itemId)
-                        ? currentIds.filter((id) => id !== itemId)
-                        : [...currentIds, itemId]
-                    )
-                  }
+                  onToggleItemExpansion={(itemId) => void handleToggleItemExpansion(itemId)}
                   onOpenItemPdf={async (item) => {
                     setItemOpenError(null)
 
@@ -705,6 +772,7 @@ interface VirtualizedItemListProps {
   items: ZoteroItemListEntry[]
   selectedItemId: number | null
   expandedItemIds: number[]
+  expandedItemStates: Record<number, ExpandedItemState>
   viewportHeight: number
   scrollTop: number
   onSelectItem: (itemId: number) => void
@@ -716,6 +784,7 @@ function VirtualizedItemList({
   items,
   selectedItemId,
   expandedItemIds,
+  expandedItemStates,
   viewportHeight,
   scrollTop,
   onSelectItem,
@@ -732,7 +801,10 @@ function VirtualizedItemList({
       rowOffsets.push(runningOffset)
 
       const rowHeight =
-        ITEM_ROW_HEIGHT + (expandedItemIdSet.has(item.id) ? ITEM_EXPANSION_HEIGHT : 0)
+        ITEM_ROW_HEIGHT +
+        (expandedItemIdSet.has(item.id)
+          ? getExpandedHeight(expandedItemStates[item.id] ?? { status: 'idle' })
+          : 0)
       rowHeights.push(rowHeight)
       runningOffset += rowHeight + ITEM_ROW_GAP
     }
@@ -742,7 +814,7 @@ function VirtualizedItemList({
       rowHeights,
       totalHeight: items.length > 0 ? runningOffset - ITEM_ROW_GAP : 0
     }
-  }, [expandedItemIdSet, items])
+  }, [expandedItemIdSet, expandedItemStates, items])
 
   const viewportBottom = scrollTop + viewportHeight
   let startIndex = 0
@@ -816,13 +888,59 @@ function VirtualizedItemList({
             </div>
 
             {isExpanded ? (
-              <div className="library-pane__item-expansion">
-                Attachment expansion is ready. The full attachment list will be rendered here in the next step.
-              </div>
+              <ItemAttachmentExpansion
+                state={expandedItemStates[item.id] ?? { status: 'idle' }}
+              />
             ) : null}
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function ItemAttachmentExpansion({ state }: { state: ExpandedItemState }) {
+  if (state.status === 'loading' || state.status === 'idle') {
+    return (
+      <div className="library-pane__item-expansion library-pane__item-expansion--status">
+        <span className="library-pane__attachment-status">Loading attachments...</span>
+      </div>
+    )
+  }
+
+  if (state.status === 'error') {
+    return (
+      <div className="library-pane__item-expansion library-pane__item-expansion--status">
+        <span className="library-pane__attachment-status">{state.message}</span>
+      </div>
+    )
+  }
+
+  if (state.attachments.length === 0) {
+    return (
+      <div className="library-pane__item-expansion library-pane__item-expansion--status">
+        <span className="library-pane__attachment-status">No linked attachments for this item.</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="library-pane__item-expansion">
+      <ul className="library-pane__attachment-list" aria-label="Attachment list">
+        {state.attachments.map((attachment) => (
+          <li key={attachment.id} className="library-pane__attachment-item">
+            <span className="library-pane__attachment-icon" aria-hidden="true">
+              {isPdfAttachment(attachment) ? <FileText size={16} /> : <Paperclip size={16} />}
+            </span>
+            <span
+              className="library-pane__attachment-name"
+              title={getAttachmentDisplayName(attachment)}
+            >
+              {getAttachmentDisplayName(attachment)}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -934,4 +1052,52 @@ function countCollectionNodes(nodes: CollectionTreeNode[]): number {
   }
 
   return count
+}
+
+function getExpandedHeight(state: ExpandedItemState): number {
+  switch (state.status) {
+    case 'idle':
+    case 'loading':
+      return ITEM_EXPANSION_LOADING_HEIGHT
+    case 'error':
+      return ITEM_EXPANSION_ERROR_HEIGHT
+    case 'ready':
+      if (state.attachments.length === 0) {
+        return ITEM_EXPANSION_EMPTY_HEIGHT
+      }
+
+      return (
+        ITEM_EXPANSION_PADDING_TOP +
+        ITEM_EXPANSION_PADDING_BOTTOM +
+        state.attachments.length * ITEM_ATTACHMENT_ROW_HEIGHT +
+        Math.max(0, state.attachments.length - 1) * ITEM_ATTACHMENT_ROW_GAP
+      )
+  }
+}
+
+function isPdfAttachment(attachment: ZoteroAttachment): boolean {
+  return attachment.contentType?.toLowerCase() === 'application/pdf'
+}
+
+function getAttachmentDisplayName(attachment: ZoteroAttachment): string {
+  const fileName = getAttachmentFileName(attachment.path)
+
+  if (fileName) {
+    return fileName
+  }
+
+  const title = attachment.title.trim()
+  return title || 'Untitled attachment'
+}
+
+function getAttachmentFileName(path: string | null): string | null {
+  if (!path) {
+    return null
+  }
+
+  const normalizedPath = path.replace(/\\/g, '/')
+  const segments = normalizedPath.split('/')
+  const lastSegment = segments.at(-1)?.trim()
+
+  return lastSegment || null
 }
