@@ -1,14 +1,14 @@
 import { FileText, Paperclip } from 'lucide-react'
-import type { CSSProperties } from 'react'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import {
   zoteroApi,
   type ZoteroAttachment,
-  type ZoteroCollectionNode,
   type ZoteroItemDetail,
   type ZoteroItemListEntry
 } from '@/zotero/api'
 import { useLibraryBootstrap } from './libraryBootstrap'
+import { LeftPanel } from './workspace/leftPanel'
+import { PanelStateProvider, usePanelState } from './workspace/panelState'
 import { useWorkspace } from './workspaceState'
 
 const ITEM_ROW_HEIGHT = 92
@@ -22,10 +22,6 @@ const ITEM_EXPANSION_PADDING_BOTTOM = 10
 const ITEM_ATTACHMENT_ROW_HEIGHT = 34
 const ITEM_ATTACHMENT_ROW_GAP = 8
 
-interface CollectionTreeNode extends ZoteroCollectionNode {
-  children: CollectionTreeNode[]
-}
-
 type ExpandedItemState =
   | { status: 'idle' }
   | { status: 'loading' }
@@ -33,14 +29,24 @@ type ExpandedItemState =
   | { status: 'error'; message: string }
 
 export function LibraryWorkspace() {
+  return (
+    <PanelStateProvider>
+      <LibraryWorkspaceContent />
+    </PanelStateProvider>
+  )
+}
+
+function LibraryWorkspaceContent() {
   const { status, summary, error, pendingLabel, retry, selectDataDir } = useLibraryBootstrap()
-  const { libraryFilters, setLibraryFilters, resetLibraryFilters, openReaderTab } = useWorkspace()
-  const [runtimeSummary, setRuntimeSummary] = useState(summary)
-  const [expandedCollectionIds, setExpandedCollectionIds] = useState<number[]>([])
-  const [collectionsStatus, setCollectionsStatus] =
-    useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
-  const [collections, setCollections] = useState<CollectionTreeNode[]>([])
-  const [collectionsError, setCollectionsError] = useState<string | null>(null)
+  const { openReaderTab } = useWorkspace()
+  const {
+    collectionId,
+    query,
+    selectedItemId,
+    setQuery,
+    setSelectedItemId,
+    clearLibraryFilters
+  } = usePanelState()
   const [itemsStatus, setItemsStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [items, setItems] = useState<ZoteroItemListEntry[]>([])
   const [itemsError, setItemsError] = useState<string | null>(null)
@@ -53,7 +59,7 @@ export function LibraryWorkspace() {
   const [itemsViewportElement, setItemsViewportElement] = useState<HTMLDivElement | null>(null)
   const [itemsViewportHeight, setItemsViewportHeight] = useState(0)
   const [itemsScrollTop, setItemsScrollTop] = useState(0)
-  const deferredQuery = useDeferredValue(libraryFilters.query)
+  const deferredQuery = useDeferredValue(query)
   const isSelectingDirectory = status === 'selecting-directory'
   const showsSetupSurface =
     status === 'needs-setup' ||
@@ -61,64 +67,7 @@ export function LibraryWorkspace() {
   const showsInvalidSurface =
     status === 'invalid-config' ||
     (isSelectingDirectory && !!summary && summary.isConfigured)
-  const hasActiveSearchQuery = libraryFilters.query.trim().length > 0
-
-  useEffect(() => {
-    setRuntimeSummary(summary)
-  }, [summary])
-
-  useEffect(() => {
-    if (status !== 'ready') {
-      setCollectionsStatus('idle')
-      setCollections([])
-      setCollectionsError(null)
-      setExpandedCollectionIds([])
-      setItemsStatus('idle')
-      setItems([])
-      setItemsError(null)
-      setExpandedItemIds([])
-      setExpandedItemStates({})
-      setDetailStatus('idle')
-      setItemDetail(null)
-      setItemDetailError(null)
-      return
-    }
-
-    let isActive = true
-
-    setCollectionsStatus('loading')
-    setCollectionsError(null)
-
-    zoteroApi
-      .listCollections()
-      .then((nodes) => {
-        if (!isActive) return
-
-        setCollections(buildCollectionTree(nodes))
-        setCollectionsStatus('ready')
-        setExpandedCollectionIds([])
-
-        void zoteroApi.getZoteroConfig().then((nextSummary) => {
-          if (!isActive) return
-          setRuntimeSummary(nextSummary)
-        })
-      })
-      .catch((collectionError: unknown) => {
-        if (!isActive) return
-
-        setCollections([])
-        setCollectionsError(
-          collectionError instanceof Error
-            ? collectionError.message
-            : 'Unable to load Zotero collections.'
-        )
-        setCollectionsStatus('error')
-      })
-
-    return () => {
-      isActive = false
-    }
-  }, [status])
+  const hasActiveSearchQuery = query.trim().length > 0
 
   useEffect(() => {
     if (!itemsViewportElement) {
@@ -145,7 +94,7 @@ export function LibraryWorkspace() {
   useEffect(() => {
     setItemsScrollTop(0)
     itemsViewportElement?.scrollTo({ top: 0 })
-  }, [itemsViewportElement, libraryFilters.collectionId, deferredQuery])
+  }, [collectionId, deferredQuery, itemsViewportElement])
 
   useEffect(() => {
     if (status !== 'ready') {
@@ -161,7 +110,7 @@ export function LibraryWorkspace() {
     setExpandedItemStates({})
 
     zoteroApi
-      .listItems({ collectionId: libraryFilters.collectionId, query: deferredQuery })
+      .listItems({ collectionId, query: deferredQuery })
       .then((nextItems) => {
         if (!isActive) return
 
@@ -183,10 +132,10 @@ export function LibraryWorkspace() {
     return () => {
       isActive = false
     }
-  }, [deferredQuery, libraryFilters.collectionId, status])
+  }, [collectionId, deferredQuery, status])
 
   useEffect(() => {
-    if (status !== 'ready' || libraryFilters.selectedItemId === null) {
+    if (status !== 'ready' || selectedItemId === null) {
       setDetailStatus('idle')
       setItemDetail(null)
       setItemDetailError(null)
@@ -199,7 +148,7 @@ export function LibraryWorkspace() {
     setItemDetailError(null)
 
     zoteroApi
-      .getItemDetail(libraryFilters.selectedItemId)
+      .getItemDetail(selectedItemId)
       .then((detail) => {
         if (!isActive) return
 
@@ -221,7 +170,7 @@ export function LibraryWorkspace() {
     return () => {
       isActive = false
     }
-  }, [libraryFilters.selectedItemId, status])
+  }, [selectedItemId, status])
 
   async function handleToggleItemExpansion(itemId: number) {
     const isExpanded = expandedItemIds.includes(itemId)
@@ -466,7 +415,7 @@ export function LibraryWorkspace() {
 
         <div className="library-workspace__meta-card">
           <span className="library-workspace__meta-label">Zotero data directory</span>
-          <strong>{runtimeSummary?.dataDir ?? 'Unavailable'}</strong>
+          <strong>{summary?.dataDir ?? 'Unavailable'}</strong>
           <p>
             The workspace only reaches this state after the saved configuration validates
             successfully.
@@ -475,82 +424,7 @@ export function LibraryWorkspace() {
       </header>
 
       <div className="library-workspace__layout">
-        <aside className="library-pane library-pane--collections" aria-label="Collections pane">
-          <div className="library-pane__header">
-            <div>
-              <span className="library-pane__eyebrow">Left Pane</span>
-              <h2>Collections</h2>
-            </div>
-            <div className="library-pane__header-meta">
-              <span
-                className={`library-pane__db-badge library-pane__db-badge--${runtimeSummary?.databaseAccess.mode ?? 'direct'}`}
-                tabIndex={0}
-              >
-                {runtimeSummary?.databaseAccess.mode ?? 'direct'}
-                <span className="library-pane__db-tooltip" role="tooltip">
-                  {runtimeSummary?.databaseAccess.mode === 'snapshot'
-                    ? runtimeSummary.databaseAccess.notice
-                    : 'Aitero is reading directly from the Zotero database. New Zotero changes can appear on the next refresh.'}
-                </span>
-              </span>
-              <span className="library-pane__count">
-                {collectionsStatus === 'ready'
-                  ? `${countCollectionNodes(collections)} collections`
-                  : 'Root view scaffold'}
-              </span>
-            </div>
-          </div>
-
-          <div className="library-pane__body">
-            <button
-              type="button"
-              className={`library-pane__nav-item${libraryFilters.collectionId === null ? ' is-active' : ''}`}
-              onClick={() => setLibraryFilters({ collectionId: null })}
-            >
-              <strong>All Items</strong>
-              <span>Stable root entry for browsing the full library before any collection is selected.</span>
-            </button>
-
-            {collectionsStatus === 'loading' ? (
-              <div className="library-pane__tree-placeholder" aria-live="polite">
-                <strong>Loading collections</strong>
-                <p>Reading the Zotero collection hierarchy from the local database.</p>
-              </div>
-            ) : null}
-
-            {collectionsStatus === 'error' ? (
-              <div className="library-pane__tree-placeholder">
-                <strong>Collections unavailable</strong>
-                <p>{collectionsError ?? 'Unable to load Zotero collections.'}</p>
-              </div>
-            ) : null}
-
-            {collectionsStatus === 'ready' && collections.length === 0 ? (
-              <div className="library-pane__tree-placeholder">
-                <strong>No collections yet</strong>
-                <p>This Zotero library does not currently define any collections.</p>
-              </div>
-            ) : null}
-
-            {collectionsStatus === 'ready' && collections.length > 0 ? (
-              <div className="library-pane__collection-tree" aria-label="Zotero collection hierarchy">
-                <CollectionTree
-                  nodes={collections}
-                  selectedCollectionId={libraryFilters.collectionId}
-                  expandedCollectionIds={expandedCollectionIds}
-                  onSelectCollection={(collectionId) => setLibraryFilters({ collectionId })}
-                  onToggleCollection={(collectionId) =>
-                    setExpandedCollectionIds((currentIds) =>
-                      currentIds.includes(collectionId)
-                        ? currentIds.filter((id) => id !== collectionId)
-                        : [...currentIds, collectionId]
-                    )
-                  }
-                />
-              </div>
-            ) : null}
-          </div>
-        </aside>
+        <LeftPanel isReady={status === 'ready'} summary={summary} />
 
         <section className="library-pane library-pane--items" aria-label="Items pane">
           <div className="library-pane__header">
@@ -572,8 +446,8 @@ export function LibraryWorkspace() {
               <span>Search library</span>
               <input
                 type="text"
-                value={libraryFilters.query}
-                onChange={(event) => setLibraryFilters({ query: event.target.value })}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search by title, author, or year"
               />
             </label>
@@ -581,7 +455,7 @@ export function LibraryWorkspace() {
             <button
               type="button"
               className="library-workspace__action library-workspace__action--secondary"
-              onClick={resetLibraryFilters}
+              onClick={clearLibraryFilters}
             >
               Reset Preview Filters
             </button>
@@ -608,7 +482,7 @@ export function LibraryWorkspace() {
                   <span>{itemsError ?? 'Unable to load Zotero items.'}</span>
                 </div>
               </div>
-            ) : items.length === 0 && (hasActiveSearchQuery || libraryFilters.collectionId !== null) ? (
+            ) : items.length === 0 && (hasActiveSearchQuery || collectionId !== null) ? (
               <div className="library-workspace__no-results">
                 <span className="library-workspace__eyebrow">No Results</span>
                 <h3>No items match the current search or collection filter.</h3>
@@ -618,17 +492,17 @@ export function LibraryWorkspace() {
                 </p>
                 <div className="library-workspace__filter-summary">
                   <span>
-                    Search: <strong>{libraryFilters.query.trim() || 'none'}</strong>
+                    Search: <strong>{query.trim() || 'none'}</strong>
                   </span>
                   <span>
                     Collection:{' '}
-                    <strong>{libraryFilters.collectionId === null ? 'All Items' : `#${libraryFilters.collectionId}`}</strong>
+                    <strong>{collectionId === null ? 'All Items' : `#${collectionId}`}</strong>
                   </span>
                 </div>
                 <button
                   type="button"
                   className="library-workspace__action"
-                  onClick={resetLibraryFilters}
+                  onClick={clearLibraryFilters}
                 >
                   Clear Filters
                 </button>
@@ -641,12 +515,12 @@ export function LibraryWorkspace() {
               >
                 <VirtualizedItemList
                   items={items}
-                  selectedItemId={libraryFilters.selectedItemId}
+                  selectedItemId={selectedItemId}
                   expandedItemIds={expandedItemIds}
                   expandedItemStates={expandedItemStates}
                   viewportHeight={itemsViewportHeight}
                   scrollTop={itemsScrollTop}
-                  onSelectItem={(itemId) => setLibraryFilters({ selectedItemId: itemId })}
+                  onSelectItem={setSelectedItemId}
                   onToggleItemExpansion={(itemId) => void handleToggleItemExpansion(itemId)}
                   onOpenItemPdf={async (item) => {
                     setItemOpenError(null)
@@ -682,10 +556,10 @@ export function LibraryWorkspace() {
               <div className="library-pane__placeholder-list">
                 <div className="library-pane__placeholder-item">
                   <strong>
-                    {libraryFilters.collectionId === null ? 'No items yet' : 'No items in this collection'}
+                    {collectionId === null ? 'No items yet' : 'No items in this collection'}
                   </strong>
                   <span>
-                    {libraryFilters.collectionId === null
+                    {collectionId === null
                       ? 'This Zotero library does not currently contain any top-level items to display.'
                       : 'The selected collection does not currently contain any top-level items to display.'}
                   </span>
@@ -943,115 +817,6 @@ function ItemAttachmentExpansion({ state }: { state: ExpandedItemState }) {
       </ul>
     </div>
   )
-}
-
-interface CollectionTreeProps {
-  nodes: CollectionTreeNode[]
-  selectedCollectionId: number | null
-  expandedCollectionIds: number[]
-  onSelectCollection: (collectionId: number) => void
-  onToggleCollection: (collectionId: number) => void
-  depth?: number
-}
-
-function CollectionTree({
-  nodes,
-  selectedCollectionId,
-  expandedCollectionIds,
-  onSelectCollection,
-  onToggleCollection,
-  depth = 0
-}: CollectionTreeProps) {
-  return (
-    <ul className="library-pane__collection-list" aria-label={depth === 0 ? 'Collections' : undefined}>
-      {nodes.map((node) => {
-        const hasChildren = node.children.length > 0
-        const isExpanded = expandedCollectionIds.includes(node.id)
-        const isSelected = selectedCollectionId === node.id
-
-        return (
-          <li key={node.id}>
-            <div
-              className={`library-pane__collection-node${isSelected ? ' is-active' : ''}`}
-              style={{ '--collection-depth': depth } as CSSProperties}
-            >
-              {hasChildren ? (
-                <button
-                  type="button"
-                  className={`library-pane__collection-toggle${isExpanded ? ' is-expanded' : ''}`}
-                  aria-label={isExpanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
-                  aria-expanded={isExpanded}
-                  onClick={() => onToggleCollection(node.id)}
-                >
-                  <span aria-hidden="true">▸</span>
-                </button>
-              ) : (
-                <span className="library-pane__collection-spacer" aria-hidden="true" />
-              )}
-
-              <button
-                type="button"
-                className="library-pane__collection-select"
-                onClick={() => onSelectCollection(node.id)}
-              >
-                <strong>{node.name}</strong>
-                <span>#{node.id}</span>
-              </button>
-            </div>
-            {hasChildren && isExpanded ? (
-              <CollectionTree
-                nodes={node.children}
-                selectedCollectionId={selectedCollectionId}
-                expandedCollectionIds={expandedCollectionIds}
-                onSelectCollection={onSelectCollection}
-                onToggleCollection={onToggleCollection}
-                depth={depth + 1}
-              />
-            ) : null}
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-function buildCollectionTree(nodes: ZoteroCollectionNode[]): CollectionTreeNode[] {
-  const nodeMap = new Map<number, CollectionTreeNode>()
-
-  for (const node of nodes) {
-    nodeMap.set(node.id, { ...node, children: [] })
-  }
-
-  const roots: CollectionTreeNode[] = []
-
-  for (const node of nodeMap.values()) {
-    if (node.parentId === null) {
-      roots.push(node)
-      continue
-    }
-
-    const parentNode = nodeMap.get(node.parentId)
-
-    if (parentNode) {
-      parentNode.children.push(node)
-      continue
-    }
-
-    roots.push(node)
-  }
-
-  return roots
-}
-
-function countCollectionNodes(nodes: CollectionTreeNode[]): number {
-  let count = 0
-
-  for (const node of nodes) {
-    count += 1
-    count += countCollectionNodes(node.children)
-  }
-
-  return count
 }
 
 function getExpandedHeight(state: ExpandedItemState): number {
