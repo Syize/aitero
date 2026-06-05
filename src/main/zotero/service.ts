@@ -165,6 +165,40 @@ export class ZoteroService {
 
     return this.withReadonlyDatabase((database) => {
       const collectionId = filters.collectionId
+      const queryTokens = tokenizeItemSearchQuery(filters.query)
+      const queryWhereClause =
+        queryTokens.length > 0
+          ? queryTokens
+              .map(
+                () => `
+            AND (
+              LOWER(COALESCE(titleValues.value, '')) LIKE ?
+              OR (
+                CASE
+                  WHEN dateValues.value GLOB '[0-9][0-9][0-9][0-9]*' THEN SUBSTR(dateValues.value, 1, 4)
+                  ELSE ''
+                END
+              ) LIKE ?
+              OR EXISTS (
+                SELECT 1
+                FROM itemCreators searchItemCreators
+                INNER JOIN creators searchCreators
+                  ON searchCreators.creatorID = searchItemCreators.creatorID
+                WHERE searchItemCreators.itemID = items.itemID
+                  AND (
+                    LOWER(COALESCE(searchCreators.firstName, '')) LIKE ?
+                    OR LOWER(COALESCE(searchCreators.lastName, '')) LIKE ?
+                    OR LOWER(TRIM(COALESCE(searchCreators.firstName, '') || ' ' || COALESCE(searchCreators.lastName, ''))) LIKE ?
+                  )
+              )
+            )`
+              )
+              .join('')
+          : ''
+      const queryParameters = queryTokens.flatMap((token) => {
+        const likeToken = `%${token}%`
+        return [likeToken, likeToken, likeToken, likeToken, likeToken]
+      })
       const itemRows = database
         .prepare(`
           SELECT
@@ -215,9 +249,10 @@ export class ZoteroService {
                   AND collectionItems.collectionID = ?
               )
             )
+            ${queryWhereClause}
           ORDER BY items.dateModified DESC, items.itemID DESC
         `)
-        .all(collectionId, collectionId)
+        .all(collectionId, collectionId, ...queryParameters)
         .map((row) => mapItemSummaryRow(row))
 
       if (itemRows.length === 0) {
@@ -288,13 +323,15 @@ export class ZoteroService {
 
       const detailRow = mapItemDetailRow(itemRow)
       const creatorRows = this.listCreatorRowsForItems(database, [detailRow.id])
+      const creators = groupCreatorsByItemId(creatorRows).get(detailRow.id) ?? []
       const attachments = this.listAttachmentsForItem(database, detailRow.id)
 
       return {
         id: detailRow.id,
         title: detailRow.title,
         year: detailRow.year,
-        creatorsText: formatCreatorsText(groupCreatorsByItemId(creatorRows).get(detailRow.id) ?? []),
+        creators,
+        creatorsText: formatCreatorsText(creators),
         attachments
       }
     })
@@ -823,6 +860,14 @@ function formatCreatorsText(creators: string[]): string {
   }
 
   return `${creators[0]} et al.`
+}
+
+function tokenizeItemSearchQuery(query: string): string[] {
+  return query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((token) => token.length > 0)
 }
 
 function resolveAttachmentPath(

@@ -1,10 +1,15 @@
 import type { CSSProperties } from 'react'
-import { useEffect, useState } from 'react'
-import { zoteroApi, type ZoteroCollectionNode, type ZoteroItemListEntry } from '@/zotero/api'
+import { useDeferredValue, useEffect, useState } from 'react'
+import {
+  zoteroApi,
+  type ZoteroCollectionNode,
+  type ZoteroItemDetail,
+  type ZoteroItemListEntry
+} from '@/zotero/api'
 import { useLibraryBootstrap } from './libraryBootstrap'
 import { useWorkspace } from './workspaceState'
 
-const ITEM_ROW_HEIGHT = 72
+const ITEM_ROW_HEIGHT = 92
 const ITEM_ROW_GAP = 10
 const ITEM_ROW_PITCH = ITEM_ROW_HEIGHT + ITEM_ROW_GAP
 const ITEM_ROW_OVERSCAN = 6
@@ -15,7 +20,7 @@ interface CollectionTreeNode extends ZoteroCollectionNode {
 
 export function LibraryWorkspace() {
   const { status, summary, error, pendingLabel, retry, selectDataDir } = useLibraryBootstrap()
-  const { libraryFilters, setLibraryFilters, resetLibraryFilters } = useWorkspace()
+  const { libraryFilters, setLibraryFilters, resetLibraryFilters, openReaderTab } = useWorkspace()
   const [runtimeSummary, setRuntimeSummary] = useState(summary)
   const [expandedCollectionIds, setExpandedCollectionIds] = useState<number[]>([])
   const [collectionsStatus, setCollectionsStatus] =
@@ -25,9 +30,14 @@ export function LibraryWorkspace() {
   const [itemsStatus, setItemsStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [items, setItems] = useState<ZoteroItemListEntry[]>([])
   const [itemsError, setItemsError] = useState<string | null>(null)
+  const [itemOpenError, setItemOpenError] = useState<string | null>(null)
+  const [detailStatus, setDetailStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [itemDetail, setItemDetail] = useState<ZoteroItemDetail | null>(null)
+  const [itemDetailError, setItemDetailError] = useState<string | null>(null)
   const [itemsViewportElement, setItemsViewportElement] = useState<HTMLDivElement | null>(null)
   const [itemsViewportHeight, setItemsViewportHeight] = useState(0)
   const [itemsScrollTop, setItemsScrollTop] = useState(0)
+  const deferredQuery = useDeferredValue(libraryFilters.query)
   const isSelectingDirectory = status === 'selecting-directory'
   const showsSetupSurface =
     status === 'needs-setup' ||
@@ -35,7 +45,7 @@ export function LibraryWorkspace() {
   const showsInvalidSurface =
     status === 'invalid-config' ||
     (isSelectingDirectory && !!summary && summary.isConfigured)
-  const hasSearchPreview = libraryFilters.query.trim().length > 0
+  const hasActiveSearchQuery = libraryFilters.query.trim().length > 0
 
   useEffect(() => {
     setRuntimeSummary(summary)
@@ -50,6 +60,9 @@ export function LibraryWorkspace() {
       setItemsStatus('idle')
       setItems([])
       setItemsError(null)
+      setDetailStatus('idle')
+      setItemDetail(null)
+      setItemDetailError(null)
       return
     }
 
@@ -114,7 +127,7 @@ export function LibraryWorkspace() {
   useEffect(() => {
     setItemsScrollTop(0)
     itemsViewportElement?.scrollTo({ top: 0 })
-  }, [itemsViewportElement, libraryFilters.collectionId, libraryFilters.query])
+  }, [itemsViewportElement, libraryFilters.collectionId, deferredQuery])
 
   useEffect(() => {
     if (status !== 'ready') {
@@ -125,9 +138,10 @@ export function LibraryWorkspace() {
 
     setItemsStatus('loading')
     setItemsError(null)
+    setItemOpenError(null)
 
     zoteroApi
-      .listItems({ collectionId: libraryFilters.collectionId })
+      .listItems({ collectionId: libraryFilters.collectionId, query: deferredQuery })
       .then((nextItems) => {
         if (!isActive) return
 
@@ -149,7 +163,45 @@ export function LibraryWorkspace() {
     return () => {
       isActive = false
     }
-  }, [libraryFilters.collectionId, status])
+  }, [deferredQuery, libraryFilters.collectionId, status])
+
+  useEffect(() => {
+    if (status !== 'ready' || libraryFilters.selectedItemId === null) {
+      setDetailStatus('idle')
+      setItemDetail(null)
+      setItemDetailError(null)
+      return
+    }
+
+    let isActive = true
+
+    setDetailStatus('loading')
+    setItemDetailError(null)
+
+    zoteroApi
+      .getItemDetail(libraryFilters.selectedItemId)
+      .then((detail) => {
+        if (!isActive) return
+
+        setItemDetail(detail)
+        setDetailStatus(detail ? 'ready' : 'idle')
+      })
+      .catch((detailError: unknown) => {
+        if (!isActive) return
+
+        setItemDetail(null)
+        setItemDetailError(
+          detailError instanceof Error
+            ? detailError.message
+            : 'Unable to load item details.'
+        )
+        setDetailStatus('error')
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [libraryFilters.selectedItemId, status])
 
   if (status === 'loading-config') {
     return (
@@ -434,9 +486,7 @@ export function LibraryWorkspace() {
             <span className="library-pane__count">
               {itemsStatus === 'loading'
                 ? 'Loading items...'
-                : hasSearchPreview
-                  ? 'Search preview'
-                  : itemsStatus === 'ready'
+                : itemsStatus === 'ready'
                     ? `${items.length} items`
                     : 'List scaffold'}
             </span>
@@ -444,12 +494,12 @@ export function LibraryWorkspace() {
 
           <div className="library-pane__toolbar">
             <label className="library-pane__search">
-              <span>Search preview</span>
+              <span>Search library</span>
               <input
                 type="text"
                 value={libraryFilters.query}
                 onChange={(event) => setLibraryFilters({ query: event.target.value })}
-                placeholder="Type to preview the no-results state"
+                placeholder="Search by title, author, or year"
               />
             </label>
 
@@ -463,6 +513,12 @@ export function LibraryWorkspace() {
           </div>
 
           <div className="library-pane__body library-pane__body--items">
+            {itemOpenError ? (
+              <div className="library-pane__inline-notice">
+                <strong>Unable to open PDF.</strong>
+                <span>{itemOpenError}</span>
+              </div>
+            ) : null}
             {itemsStatus === 'loading' ? (
               <div className="library-pane__placeholder-list">
                 <div className="library-pane__placeholder-item">
@@ -477,14 +533,13 @@ export function LibraryWorkspace() {
                   <span>{itemsError ?? 'Unable to load Zotero items.'}</span>
                 </div>
               </div>
-            ) : hasSearchPreview ? (
+            ) : items.length === 0 && (hasActiveSearchQuery || libraryFilters.collectionId !== null) ? (
               <div className="library-workspace__no-results">
                 <span className="library-workspace__eyebrow">No Results</span>
                 <h3>No items match the current search or collection filter.</h3>
                 <p>
-                  This empty state is now anchored inside the real center pane, so the
-                  future list implementation can reuse it directly when filters produce no
-                  matches.
+                  The current search query and collection selection were applied in the
+                  Zotero SQL query, but no matching items were found.
                 </p>
                 <div className="library-workspace__filter-summary">
                   <span>
@@ -515,6 +570,34 @@ export function LibraryWorkspace() {
                   viewportHeight={itemsViewportHeight}
                   scrollTop={itemsScrollTop}
                   onSelectItem={(itemId) => setLibraryFilters({ selectedItemId: itemId })}
+                  onOpenItemPdf={async (item) => {
+                    setItemOpenError(null)
+
+                    try {
+                      const resolvedPdf = await zoteroApi.resolveItemDefaultPdf(item.id)
+
+                      if (!resolvedPdf) {
+                        setItemOpenError('The selected item does not have a default PDF attachment.')
+                        return
+                      }
+
+                      openReaderTab(
+                        {
+                          itemId: resolvedPdf.itemId,
+                          attachmentId: resolvedPdf.attachmentId,
+                          title: item.title || 'Untitled item',
+                          pdfPath: resolvedPdf.pdfPath
+                        },
+                        item.title || 'Untitled item'
+                      )
+                    } catch (openError) {
+                      setItemOpenError(
+                        openError instanceof Error
+                          ? openError.message
+                          : 'Unable to resolve the default PDF for this item.'
+                      )
+                    }
+                  }}
                 />
               </div>
             ) : (
@@ -540,25 +623,66 @@ export function LibraryWorkspace() {
               <span className="library-pane__eyebrow">Right Pane</span>
               <h2>Details</h2>
             </div>
-            <span className="library-pane__count">Awaiting selection</span>
+            <span className="library-pane__count">
+              {detailStatus === 'loading'
+                ? 'Loading detail...'
+                : itemDetail
+                  ? `Item #${itemDetail.id}`
+                  : 'Awaiting selection'}
+            </span>
           </div>
 
           <div className="library-pane__body">
-            <div className="library-pane__detail-card">
-              <strong>Metadata preview</strong>
-              <p>
-                This pane is reserved for the selected item summary, creators, year, and
-                attachments once the list/detail flow is wired in.
-              </p>
-            </div>
+            {detailStatus === 'loading' ? (
+              <div className="library-pane__detail-card">
+                <strong>Loading metadata</strong>
+                <p>Reading the selected item's summary from the Zotero database.</p>
+              </div>
+            ) : detailStatus === 'error' ? (
+              <div className="library-pane__detail-card">
+                <strong>Detail unavailable</strong>
+                <p>{itemDetailError ?? 'Unable to load item details.'}</p>
+              </div>
+            ) : itemDetail ? (
+              <>
+                <div className="library-pane__detail-card">
+                  <span className="library-pane__detail-label">Title</span>
+                  <strong>{itemDetail.title || 'Untitled item'}</strong>
+                </div>
 
-            <div className="library-pane__detail-card">
-              <strong>Attachment context</strong>
-              <p>
-                Multi-attachment explanation and no-PDF messaging will live here without
-                disturbing the outer three-pane layout.
-              </p>
-            </div>
+                <div className="library-pane__detail-card">
+                  <span className="library-pane__detail-label">Authors</span>
+                  {itemDetail.creators.length > 0 ? (
+                    <ul className="library-pane__detail-list">
+                      {itemDetail.creators.map((creator) => (
+                        <li key={creator}>{creator}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>No creator metadata</p>
+                  )}
+                </div>
+
+                <div className="library-pane__detail-grid">
+                  <div className="library-pane__detail-card">
+                    <span className="library-pane__detail-label">Year</span>
+                    <p>{itemDetail.year ?? 'n.d.'}</p>
+                  </div>
+
+                  <div className="library-pane__detail-card">
+                    <span className="library-pane__detail-label">Attachments</span>
+                    <p>{itemDetail.attachments.length} linked file(s)</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="library-pane__detail-card">
+                <strong>Select an item</strong>
+                <p>
+                  Choose an item in the center pane to inspect its key metadata here.
+                </p>
+              </div>
+            )}
           </div>
         </aside>
       </div>
@@ -572,6 +696,7 @@ interface VirtualizedItemListProps {
   viewportHeight: number
   scrollTop: number
   onSelectItem: (itemId: number) => void
+  onOpenItemPdf: (item: ZoteroItemListEntry) => void | Promise<void>
 }
 
 function VirtualizedItemList({
@@ -579,7 +704,8 @@ function VirtualizedItemList({
   selectedItemId,
   viewportHeight,
   scrollTop,
-  onSelectItem
+  onSelectItem,
+  onOpenItemPdf
 }: VirtualizedItemListProps) {
   const visibleCount = Math.ceil(viewportHeight / ITEM_ROW_PITCH)
   const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_ROW_PITCH) - ITEM_ROW_OVERSCAN)
@@ -608,8 +734,13 @@ function VirtualizedItemList({
             }`}
             style={{ top: itemIndex * ITEM_ROW_PITCH, height: ITEM_ROW_HEIGHT }}
             onClick={() => onSelectItem(item.id)}
+            onDoubleClick={() => void onOpenItemPdf(item)}
           >
             <strong>{item.title || 'Untitled item'}</strong>
+            <div className="library-pane__item-meta">
+              <span>{item.creatorsText || 'No creator metadata'}</span>
+              <em>{item.year ?? 'n.d.'}</em>
+            </div>
           </button>
         )
       })}

@@ -108,14 +108,14 @@
   - [x] Show `All Items`.
   - [x] Show real collection hierarchy.
   - [x] Selecting a collection updates the item list filter.
-- [ ] Center pane: item list
+- [x] Center pane: item list
   - [x] Show title.
-  - [ ] Show compact author text.
-  - [ ] Show year.
-  - [ ] Support search by title, author, year.
-  - [ ] Support double-click to open the item's default PDF.
+  - [x] Show compact author text.
+  - [x] Show year.
+  - [x] Support search by title, author, year.
+  - [x] Support double-click to open the item's default PDF.
 - [ ] Right pane: item detail
-  - [ ] Show key metadata.
+  - [x] Show key metadata.
   - [ ] Show attachment list.
   - [ ] Show "no PDF available" state clearly.
   - [ ] Show multiple attachments clearly even if only one default PDF opens on double-click.

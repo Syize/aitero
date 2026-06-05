@@ -61,6 +61,7 @@ export interface ZoteroCollectionNode {
 
 export interface ZoteroItemListFilters {
   collectionId: number | null
+  query: string
 }
 
 export interface ZoteroItemListEntry {
@@ -89,6 +90,7 @@ export interface ZoteroItemDetail {
   id: number
   title: string
   year: string | null
+  creators: string[]
   creatorsText: string
   attachments: ZoteroAttachment[]
 }

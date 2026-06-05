@@ -62,7 +62,7 @@ export function AppShell() {
 
       <main className="app-shell__content">
         <section className="app-shell__workspace" aria-label="Main content region">
-          {activeTab.type === 'library' ? <LibraryWorkspace /> : <PDFViewer />}
+          {activeTab.type === 'library' ? <LibraryWorkspace /> : <PDFViewer reader={activeTab.reader} />}
         </section>
       </main>
     </div>

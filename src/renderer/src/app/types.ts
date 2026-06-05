@@ -1,4 +1,5 @@
 export interface ReaderTabState {
+  id?: string
   itemId?: number
   attachmentId?: number
   title: string

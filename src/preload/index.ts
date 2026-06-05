@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import { readFile } from 'node:fs/promises'
 import {
   type ZoteroIpcError,
   type ZoteroIpcResult,
@@ -30,6 +31,15 @@ const api = {
         zoteroIpcChannels.resolveItemDefaultPdf,
         itemId
       )
+  },
+  reader: {
+    readPdfFile: async (filePath: string) => {
+      const fileBuffer = await readFile(filePath)
+      return fileBuffer.buffer.slice(
+        fileBuffer.byteOffset,
+        fileBuffer.byteOffset + fileBuffer.byteLength
+      )
+    }
   }
 }
 

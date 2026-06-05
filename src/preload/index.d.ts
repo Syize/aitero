@@ -3,6 +3,9 @@ import type { ZoteroWindowApi } from '../renderer/src/zotero/api'
 
 export interface AppApi {
   zotero: ZoteroWindowApi
+  reader: {
+    readPdfFile(filePath: string): Promise<ArrayBuffer>
+  }
 }
 
 declare global {

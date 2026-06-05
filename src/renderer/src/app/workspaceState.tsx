@@ -1,5 +1,6 @@
 import { createContext, ReactNode, useContext, useMemo, useState } from 'react'
 import type { LibraryFilterState, LibraryTab, ReaderTab, WorkspaceTab } from './types'
+import type { ReaderTabState } from './types'
 
 const LIBRARY_TAB: LibraryTab = {
   id: 'library',
@@ -23,6 +24,7 @@ interface WorkspaceContextValue {
   setLibraryFilters: (nextFilters: Partial<LibraryFilterState>) => void
   resetLibraryFilters: () => void
   createReaderTab: () => void
+  openReaderTab: (reader: ReaderTabState, label?: string) => void
   closeTab: (tabId: string) => void
 }
 
@@ -55,6 +57,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   function createReaderTab() {
+    openReaderTab({
+      title: 'Untitled Reader'
+    })
+  }
+
+  function openReaderTab(reader: ReaderTabState, label?: string) {
     let nextTabId = 'reader-1'
 
     setTabs((prevTabs) => {
@@ -62,7 +70,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const nextIndex = readerCount + 1
       nextTabId = `reader-${nextIndex}`
 
-      return [...prevTabs, createReaderTabState(nextIndex)]
+      return [...prevTabs, createReaderTabState(nextIndex, reader, label)]
     })
 
     setActiveTabId(nextTabId)
@@ -95,6 +103,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setLibraryFilters,
       resetLibraryFilters,
       createReaderTab,
+      openReaderTab,
       closeTab
     }),
     [activeTab, activeTabId, libraryFilters, tabs]
@@ -113,14 +122,20 @@ export function useWorkspace() {
   return context
 }
 
-function createReaderTabState(index: number): ReaderTab {
+function createReaderTabState(index: number, reader?: ReaderTabState, label?: string): ReaderTab {
+  const nextReader: ReaderTabState = {
+    id: `reader-${index}`,
+    title: label ?? reader?.title ?? `Reader ${index}`,
+    itemId: reader?.itemId,
+    attachmentId: reader?.attachmentId,
+    pdfPath: reader?.pdfPath
+  }
+
   return {
     id: `reader-${index}`,
     type: 'reader',
-    label: `Reader ${index}`,
+    label: label ?? reader?.title ?? `Reader ${index}`,
     closable: true,
-    reader: {
-      title: `Reader ${index}`
-    }
+    reader: nextReader
   }
 }

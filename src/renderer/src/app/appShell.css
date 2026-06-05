@@ -80,6 +80,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  max-width: 18rem;
   border: 1px solid rgba(55, 65, 81, 0.12);
   background: rgba(255, 255, 255, 0.52);
   color: rgba(55, 65, 81, 0.78);
@@ -115,8 +116,13 @@
 }
 
 .app-shell__tab-trigger {
+  min-width: 0;
+  max-width: 100%;
   padding: 6px 0;
   font: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-shell__tab-close {
@@ -432,6 +438,24 @@
   overflow: hidden;
 }
 
+.library-pane__inline-notice {
+  display: grid;
+  gap: 4px;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(194, 65, 12, 0.12);
+  background: rgba(255, 237, 213, 0.72);
+}
+
+.library-pane__inline-notice strong {
+  color: #9a3412;
+  font-size: 0.86rem;
+}
+
+.library-pane__inline-notice span {
+  color: rgba(120, 53, 15, 0.84);
+  font-size: 0.8rem;
+}
+
 .library-pane__nav-item {
   display: grid;
   gap: 6px;
@@ -636,6 +660,36 @@
   -webkit-line-clamp: 2;
 }
 
+.library-pane__item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.library-pane__item-row span {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: rgba(55, 65, 81, 0.7);
+  font-size: 0.82rem;
+  line-height: 1.25;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.library-pane__item-row em {
+  flex: 0 0 auto;
+  font-style: normal;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(47, 75, 60, 0.72);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
 .library-pane__placeholder-list {
   display: grid;
   gap: 12px;
@@ -655,6 +709,34 @@
 .library-pane__detail-card strong {
   color: #233327;
   font-size: 0.95rem;
+}
+
+.library-pane__detail-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.library-pane__detail-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.library-pane__detail-card p {
+  color: rgba(55, 65, 81, 0.8);
+  line-height: 1.45;
+}
+
+.library-pane__detail-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+  color: rgba(55, 65, 81, 0.8);
 }
 
 .library-workspace__filter-preview {
