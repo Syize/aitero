@@ -2,6 +2,7 @@ import type {
   ZoteroAttachment,
   ZoteroCollectionNode,
   ZoteroItemDetail,
+  ZoteroItemListFilters,
   ZoteroItemListEntry,
   ZoteroLibrarySummary
 } from './types'
@@ -17,7 +18,7 @@ export interface ZoteroApi {
   selectZoteroDataDir(): Promise<ZoteroDataDirSelectionResult>
   getZoteroConfig(): Promise<ZoteroLibrarySummary>
   listCollections(): Promise<ZoteroCollectionNode[]>
-  listItems(): Promise<ZoteroItemListEntry[]>
+  listItems(filters: ZoteroItemListFilters): Promise<ZoteroItemListEntry[]>
   getItemDetail(itemId: number): Promise<ZoteroItemDetail | null>
   resolveItemDefaultPdf(itemId: number): Promise<ZoteroResolvedPdf | null>
 }
@@ -61,7 +62,7 @@ export const zoteroApi: ZoteroApi = {
   selectZoteroDataDir: () => window.api.zotero.selectZoteroDataDir(),
   getZoteroConfig: () => window.api.zotero.getZoteroConfig(),
   listCollections: () => window.api.zotero.listCollections(),
-  listItems: () => window.api.zotero.listItems(),
+  listItems: (filters) => window.api.zotero.listItems(filters),
   getItemDetail: (itemId) => window.api.zotero.getItemDetail(itemId),
   resolveItemDefaultPdf: (itemId) => window.api.zotero.resolveItemDefaultPdf(itemId)
 }
@@ -70,6 +71,7 @@ export type {
   ZoteroAttachment,
   ZoteroCollectionNode,
   ZoteroItemDetail,
+  ZoteroItemListFilters,
   ZoteroItemListEntry,
   ZoteroLibrarySummary
 }

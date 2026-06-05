@@ -38,6 +38,10 @@ export interface ZoteroCollectionNode {
   parentId: number | null
 }
 
+export interface ZoteroItemListFilters {
+  collectionId: number | null
+}
+
 export interface ZoteroItemListEntry {
   id: number
   title: string

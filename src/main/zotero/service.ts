@@ -14,6 +14,7 @@ import type {
   ZoteroDataDirSelectionResult,
   ZoteroDataDirValidation,
   ZoteroItemDetail,
+  ZoteroItemListFilters,
   ZoteroItemListEntry,
   ZoteroLibraryContext,
   ZoteroLibrarySummary,
@@ -159,10 +160,11 @@ export class ZoteroService {
     })
   }
 
-  async listItems(): Promise<ZoteroItemListEntry[]> {
+  async listItems(filters: ZoteroItemListFilters): Promise<ZoteroItemListEntry[]> {
     this.assertConfigured()
 
     return this.withReadonlyDatabase((database) => {
+      const collectionId = filters.collectionId
       const itemRows = database
         .prepare(`
           SELECT
@@ -205,9 +207,17 @@ export class ZoteroService {
           LEFT JOIN itemDataValues dateValues ON dateValues.valueID = dateItemData.valueID
           WHERE deletedItems.itemID IS NULL
             AND itemTypes.typeName NOT IN ('attachment', 'note', 'annotation')
+            AND (
+              ? IS NULL OR EXISTS (
+                SELECT 1
+                FROM collectionItems
+                WHERE collectionItems.itemID = items.itemID
+                  AND collectionItems.collectionID = ?
+              )
+            )
           ORDER BY items.dateModified DESC, items.itemID DESC
         `)
-        .all()
+        .all(collectionId, collectionId)
         .map((row) => mapItemSummaryRow(row))
 
       if (itemRows.length === 0) {

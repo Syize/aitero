@@ -108,8 +108,8 @@ function registerZoteroIpcHandlers(): void {
     return handleZoteroRequest(() => zoteroService.listCollections())
   })
 
-  ipcMain.handle(zoteroIpcChannels.listItems, () => {
-    return handleZoteroRequest(() => zoteroService.listItems())
+  ipcMain.handle(zoteroIpcChannels.listItems, (_event, filters) => {
+    return handleZoteroRequest(() => zoteroService.listItems(filters))
   })
 
   ipcMain.handle(zoteroIpcChannels.getItemDetail, (_event, itemId: number) => {

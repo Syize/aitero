@@ -18,7 +18,8 @@ const api = {
       invokeZotero<ReturnType<ZoteroPreloadApi['getZoteroConfig']>>(zoteroIpcChannels.getZoteroConfig),
     listCollections: () =>
       invokeZotero<ReturnType<ZoteroPreloadApi['listCollections']>>(zoteroIpcChannels.listCollections),
-    listItems: () => invokeZotero<ReturnType<ZoteroPreloadApi['listItems']>>(zoteroIpcChannels.listItems),
+    listItems: (filters) =>
+      invokeZotero<ReturnType<ZoteroPreloadApi['listItems']>>(zoteroIpcChannels.listItems, filters),
     getItemDetail: (itemId: number) =>
       invokeZotero<ReturnType<ZoteroPreloadApi['getItemDetail']>>(
         zoteroIpcChannels.getItemDetail,

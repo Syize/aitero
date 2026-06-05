@@ -2,6 +2,7 @@ import type {
   ZoteroCollectionNode,
   ZoteroDataDirSelectionResult,
   ZoteroItemDetail,
+  ZoteroItemListFilters,
   ZoteroItemListEntry,
   ZoteroLibrarySummary,
   ZoteroResolvedPdf,
@@ -36,7 +37,7 @@ export interface ZoteroPreloadApi {
   selectZoteroDataDir(): Promise<ZoteroDataDirSelectionResult>
   getZoteroConfig(): Promise<ZoteroLibrarySummary>
   listCollections(): Promise<ZoteroCollectionNode[]>
-  listItems(): Promise<ZoteroItemListEntry[]>
+  listItems(filters: ZoteroItemListFilters): Promise<ZoteroItemListEntry[]>
   getItemDetail(itemId: number): Promise<ZoteroItemDetail | null>
   resolveItemDefaultPdf(itemId: number): Promise<ZoteroResolvedPdf | null>
 }

@@ -35,8 +35,7 @@ export function LibraryWorkspace() {
   const showsInvalidSurface =
     status === 'invalid-config' ||
     (isSelectingDirectory && !!summary && summary.isConfigured)
-  const hasActiveLibraryFilters =
-    libraryFilters.query.trim().length > 0 || libraryFilters.collectionId !== null
+  const hasSearchPreview = libraryFilters.query.trim().length > 0
 
   useEffect(() => {
     setRuntimeSummary(summary)
@@ -128,7 +127,7 @@ export function LibraryWorkspace() {
     setItemsError(null)
 
     zoteroApi
-      .listItems()
+      .listItems({ collectionId: libraryFilters.collectionId })
       .then((nextItems) => {
         if (!isActive) return
 
@@ -150,7 +149,7 @@ export function LibraryWorkspace() {
     return () => {
       isActive = false
     }
-  }, [status])
+  }, [libraryFilters.collectionId, status])
 
   if (status === 'loading-config') {
     return (
@@ -435,8 +434,8 @@ export function LibraryWorkspace() {
             <span className="library-pane__count">
               {itemsStatus === 'loading'
                 ? 'Loading items...'
-                : hasActiveLibraryFilters
-                  ? '0 matching items'
+                : hasSearchPreview
+                  ? 'Search preview'
                   : itemsStatus === 'ready'
                     ? `${items.length} items`
                     : 'List scaffold'}
@@ -478,7 +477,7 @@ export function LibraryWorkspace() {
                   <span>{itemsError ?? 'Unable to load Zotero items.'}</span>
                 </div>
               </div>
-            ) : hasActiveLibraryFilters ? (
+            ) : hasSearchPreview ? (
               <div className="library-workspace__no-results">
                 <span className="library-workspace__eyebrow">No Results</span>
                 <h3>No items match the current search or collection filter.</h3>
@@ -521,8 +520,14 @@ export function LibraryWorkspace() {
             ) : (
               <div className="library-pane__placeholder-list">
                 <div className="library-pane__placeholder-item">
-                  <strong>No items yet</strong>
-                  <span>This Zotero library does not currently contain any top-level items to display.</span>
+                  <strong>
+                    {libraryFilters.collectionId === null ? 'No items yet' : 'No items in this collection'}
+                  </strong>
+                  <span>
+                    {libraryFilters.collectionId === null
+                      ? 'This Zotero library does not currently contain any top-level items to display.'
+                      : 'The selected collection does not currently contain any top-level items to display.'}
+                  </span>
                 </div>
               </div>
             )}
