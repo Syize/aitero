@@ -551,7 +551,7 @@
   align-items: center;
   justify-content: center;
   color: rgba(47, 75, 60, 0.78);
-  font-size: 2rem;
+  font-size: 1.2rem;
   transition:
     background-color 0.18s ease,
     transform 0.18s ease;
@@ -564,6 +564,8 @@
 .library-pane__collection-toggle span {
   display: inline-block;
   transition: transform 0.18s ease;
+  font-size: inherit;
+  line-height: 1;
 }
 
 .library-pane__collection-toggle.is-expanded span {
@@ -617,16 +619,20 @@
   overflow: auto;
 }
 
+.library-pane__item-entry {
+  display: grid;
+  gap: 8px;
+}
+
 .library-pane__item-row {
   display: grid;
-  gap: 4px;
-  text-align: left;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
   border: 1px solid rgba(47, 75, 60, 0.08);
   border-radius: 16px;
   padding: 14px 16px;
-  font: inherit;
   background: rgba(255, 255, 255, 0.86);
-  color: rgba(55, 65, 81, 0.82);
   transition:
     transform 0.18s ease,
     border-color 0.18s ease,
@@ -650,6 +656,18 @@
   background: rgba(135, 169, 107, 0.14);
 }
 
+.library-pane__item-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: rgba(55, 65, 81, 0.82);
+}
+
 .library-pane__item-row strong {
   color: #233327;
   font-size: 0.95rem;
@@ -667,7 +685,7 @@
   gap: 12px;
 }
 
-.library-pane__item-row span {
+.library-pane__item-authors {
   min-width: 0;
   flex: 1 1 auto;
   color: rgba(55, 65, 81, 0.7);
@@ -688,6 +706,17 @@
   color: rgba(47, 75, 60, 0.72);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum';
+}
+
+.library-pane__item-expansion {
+  margin-left: 46px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(47, 75, 60, 0.06);
+  border: 1px dashed rgba(47, 75, 60, 0.14);
+  color: rgba(55, 65, 81, 0.76);
+  font-size: 0.84rem;
+  line-height: 1.4;
 }
 
 .library-pane__placeholder-list {

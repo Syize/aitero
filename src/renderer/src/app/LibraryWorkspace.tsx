@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { useDeferredValue, useEffect, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import {
   zoteroApi,
   type ZoteroCollectionNode,
@@ -11,8 +11,8 @@ import { useWorkspace } from './workspaceState'
 
 const ITEM_ROW_HEIGHT = 92
 const ITEM_ROW_GAP = 10
-const ITEM_ROW_PITCH = ITEM_ROW_HEIGHT + ITEM_ROW_GAP
 const ITEM_ROW_OVERSCAN = 6
+const ITEM_EXPANSION_HEIGHT = 64
 
 interface CollectionTreeNode extends ZoteroCollectionNode {
   children: CollectionTreeNode[]
@@ -31,6 +31,7 @@ export function LibraryWorkspace() {
   const [items, setItems] = useState<ZoteroItemListEntry[]>([])
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [itemOpenError, setItemOpenError] = useState<string | null>(null)
+  const [expandedItemIds, setExpandedItemIds] = useState<number[]>([])
   const [detailStatus, setDetailStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [itemDetail, setItemDetail] = useState<ZoteroItemDetail | null>(null)
   const [itemDetailError, setItemDetailError] = useState<string | null>(null)
@@ -60,6 +61,7 @@ export function LibraryWorkspace() {
       setItemsStatus('idle')
       setItems([])
       setItemsError(null)
+      setExpandedItemIds([])
       setDetailStatus('idle')
       setItemDetail(null)
       setItemDetailError(null)
@@ -139,6 +141,7 @@ export function LibraryWorkspace() {
     setItemsStatus('loading')
     setItemsError(null)
     setItemOpenError(null)
+    setExpandedItemIds([])
 
     zoteroApi
       .listItems({ collectionId: libraryFilters.collectionId, query: deferredQuery })
@@ -567,9 +570,17 @@ export function LibraryWorkspace() {
                 <VirtualizedItemList
                   items={items}
                   selectedItemId={libraryFilters.selectedItemId}
+                  expandedItemIds={expandedItemIds}
                   viewportHeight={itemsViewportHeight}
                   scrollTop={itemsScrollTop}
                   onSelectItem={(itemId) => setLibraryFilters({ selectedItemId: itemId })}
+                  onToggleItemExpansion={(itemId) =>
+                    setExpandedItemIds((currentIds) =>
+                      currentIds.includes(itemId)
+                        ? currentIds.filter((id) => id !== itemId)
+                        : [...currentIds, itemId]
+                    )
+                  }
                   onOpenItemPdf={async (item) => {
                     setItemOpenError(null)
 
@@ -693,55 +704,123 @@ export function LibraryWorkspace() {
 interface VirtualizedItemListProps {
   items: ZoteroItemListEntry[]
   selectedItemId: number | null
+  expandedItemIds: number[]
   viewportHeight: number
   scrollTop: number
   onSelectItem: (itemId: number) => void
+  onToggleItemExpansion: (itemId: number) => void
   onOpenItemPdf: (item: ZoteroItemListEntry) => void | Promise<void>
 }
 
 function VirtualizedItemList({
   items,
   selectedItemId,
+  expandedItemIds,
   viewportHeight,
   scrollTop,
   onSelectItem,
+  onToggleItemExpansion,
   onOpenItemPdf
 }: VirtualizedItemListProps) {
-  const visibleCount = Math.ceil(viewportHeight / ITEM_ROW_PITCH)
-  const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_ROW_PITCH) - ITEM_ROW_OVERSCAN)
-  const endIndex = Math.min(
-    items.length,
-    startIndex + visibleCount + ITEM_ROW_OVERSCAN * 2
-  )
-  const totalHeight =
-    items.length > 0 ? items.length * ITEM_ROW_PITCH - ITEM_ROW_GAP : 0
+  const expandedItemIdSet = useMemo(() => new Set(expandedItemIds), [expandedItemIds])
+  const virtualMetrics = useMemo(() => {
+    const rowOffsets: number[] = []
+    const rowHeights: number[] = []
+    let runningOffset = 0
+
+    for (const item of items) {
+      rowOffsets.push(runningOffset)
+
+      const rowHeight =
+        ITEM_ROW_HEIGHT + (expandedItemIdSet.has(item.id) ? ITEM_EXPANSION_HEIGHT : 0)
+      rowHeights.push(rowHeight)
+      runningOffset += rowHeight + ITEM_ROW_GAP
+    }
+
+    return {
+      rowOffsets,
+      rowHeights,
+      totalHeight: items.length > 0 ? runningOffset - ITEM_ROW_GAP : 0
+    }
+  }, [expandedItemIdSet, items])
+
+  const viewportBottom = scrollTop + viewportHeight
+  let startIndex = 0
+
+  while (
+    startIndex < items.length &&
+    virtualMetrics.rowOffsets[startIndex] + virtualMetrics.rowHeights[startIndex] < scrollTop
+  ) {
+    startIndex += 1
+  }
+
+  startIndex = Math.max(0, startIndex - ITEM_ROW_OVERSCAN)
+
+  let endIndex = startIndex
+
+  while (
+    endIndex < items.length &&
+    virtualMetrics.rowOffsets[endIndex] < viewportBottom
+  ) {
+    endIndex += 1
+  }
+
+  endIndex = Math.min(items.length, endIndex + ITEM_ROW_OVERSCAN)
 
   return (
     <div
       className="library-pane__item-list library-pane__item-list--virtualized"
-      style={{ height: totalHeight }}
+      style={{ height: virtualMetrics.totalHeight }}
       aria-label="Zotero item titles"
     >
       {items.slice(startIndex, endIndex).map((item, visibleIndex) => {
         const itemIndex = startIndex + visibleIndex
+        const isExpanded = expandedItemIdSet.has(item.id)
 
         return (
-          <button
+          <div
             key={item.id}
-            type="button"
-            className={`library-pane__item-row library-pane__item-row--virtualized${
+            className={`library-pane__item-entry library-pane__item-row--virtualized${
               selectedItemId === item.id ? ' is-active' : ''
             }`}
-            style={{ top: itemIndex * ITEM_ROW_PITCH, height: ITEM_ROW_HEIGHT }}
-            onClick={() => onSelectItem(item.id)}
-            onDoubleClick={() => void onOpenItemPdf(item)}
+            style={{
+              top: virtualMetrics.rowOffsets[itemIndex],
+              height: virtualMetrics.rowHeights[itemIndex]
+            }}
           >
-            <strong>{item.title || 'Untitled item'}</strong>
-            <div className="library-pane__item-meta">
-              <span>{item.creatorsText || 'No creator metadata'}</span>
-              <em>{item.year ?? 'n.d.'}</em>
+            <div className={`library-pane__item-row${selectedItemId === item.id ? ' is-active' : ''}`}>
+              <button
+                type="button"
+                className={`library-pane__collection-toggle${isExpanded ? ' is-expanded' : ''}`}
+                aria-label={isExpanded ? `Collapse ${item.title}` : `Expand ${item.title}`}
+                aria-expanded={isExpanded}
+                onClick={() => onToggleItemExpansion(item.id)}
+              >
+                <span aria-hidden="true">▸</span>
+              </button>
+
+              <button
+                type="button"
+                className="library-pane__item-main"
+                onClick={() => onSelectItem(item.id)}
+                onDoubleClick={() => void onOpenItemPdf(item)}
+              >
+                <strong>{item.title || 'Untitled item'}</strong>
+                <div className="library-pane__item-meta">
+                  <span className="library-pane__item-authors">
+                    {item.creatorsText || 'No creator metadata'}
+                  </span>
+                  <em>{item.year ?? 'n.d.'}</em>
+                </div>
+              </button>
             </div>
-          </button>
+
+            {isExpanded ? (
+              <div className="library-pane__item-expansion">
+                Attachment expansion is ready. The full attachment list will be rendered here in the next step.
+              </div>
+            ) : null}
+          </div>
         )
       })}
     </div>

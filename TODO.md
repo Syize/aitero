@@ -114,7 +114,7 @@
   - [x] Show year.
   - [x] Support search by title, author, year.
   - [x] Support double-click to open the item's default PDF.
-  - [ ] Support attachment expansion under each item row.
+  - [x] Support attachment expansion under each item row.
   - [ ] Show attachment list inside the expanded item row.
 - [ ] Right pane: item detail
   - [x] Show key metadata.
