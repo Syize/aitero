@@ -114,12 +114,18 @@
   - [x] Show year.
   - [x] Support search by title, author, year.
   - [x] Support double-click to open the item's default PDF.
+  - [ ] Support attachment expansion under each item row.
+  - [ ] Show attachment list inside the expanded item row.
 - [ ] Right pane: item detail
   - [x] Show key metadata.
-  - [ ] Show attachment list.
   - [ ] Show "no PDF available" state clearly.
-  - [ ] Show multiple attachments clearly even if only one default PDF opens on double-click.
+  - [ ] Show attachment summary clearly even when the full list lives in the center pane expansion.
 - [ ] Keep the visual direction close to Zotero's density and utility, but do not chase full parity.
+
+### Layout note
+- Attachment presentation is intentionally split:
+  - The center pane owns per-item expansion and the full attachment list, closer to Zotero's interaction model.
+  - The right pane stays focused on key metadata plus attachment/no-PDF summary states.
 
 ### Acceptance
 - [ ] Users can browse collections, filter items, inspect details, and understand attachment state.
